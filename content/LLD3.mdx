@@ -1,0 +1,2752 @@
+---
+title: "LLD from Scratch #03 — Object-Oriented Design: Object Discovery, Responsibility Assignment, and Design Principles"
+description: "A first-principles exploration of object discovery, entities, value objects, responsibility assignment, encapsulation, invariants, state modeling, cohesion, coupling, and service design."
+author: "Keshavv"
+publishedAt: "2026-11-09"
+readingTime: "37 min"
+tags:
+  - LLD
+  - Software Development
+  - OOP
+  - Object-Oriented Design
+  - Backend Engineering
+---
+
+# LLD from Scratch #03 — Object-Oriented Design: Object Discovery, Responsibility Assignment, and Design Principles
+
+In Part II, we explored Object-Oriented Programming (OOP), why it emerged, and how it organizes software around objects that combine state and behavior.
+
+We learned about classes, objects, encapsulation, and the idea of representing software through interacting entities rather than treating a program as a collection of unrelated procedures.
+
+But there is an important distinction we haven’t explored yet:
+
+**Understanding how objects work is not the same as understanding how to design a system using them.**
+
+Knowing how to write a class is a programming skill. Knowing what that class should represent, which responsibilities it should own, what information it should protect, and how it should collaborate with other objects is a design skill.
+
+And this is where Low-Level Design (LLD) becomes interesting.
+
+In real-world software, the difficult part is rarely writing:
+
+```ts
+class User {
+  // properties and methods
+}
+```
+
+The difficult part is deciding whether `User` should even exist as a separate domain concept, what behavior belongs inside it, which other objects it should interact with, and how its state should remain consistent as the system evolves.
+
+Let’s understand this through a concrete problem.
+
+## A Problem to Think About: Library Management System
+
+Imagine we have been asked to design a library management system.
+
+The initial requirements are:
+
+> A library allows registered members to borrow books. Every successful borrowing operation must record the borrowing date, due date, and return status. A book cannot be borrowed by multiple members simultaneously.
+
+This sounds like a fairly straightforward requirement.
+
+We can immediately identify a few concepts:
+
+- A `Member` who borrows books.
+- A `Book` that can be borrowed.
+- A `Loan` that represents the borrowing operation.
+
+Our initial model might look like this:
+
+```text
++----------------+       +----------------+       +----------------+
+|     Member     |       |      Loan      |       |      Book      |
++----------------+       +----------------+       +----------------+
+| id             |       | id             |       | id             |
+| name           |       | memberId       |       | title          |
+| email          |       | bookId         |       | availability   |
++----------------+       | borrowedAt     |       +----------------+
+                         | dueAt          |
+                         | status         |
+                         +----------------+
+```
+
+At this point, it might feel like we have already understood the problem.
+
+We have identified the entities, listed their attributes, and established that a loan connects a member with a book.
+
+But this is only a preliminary representation of the domain. It tells us what information might exist; it does not yet tell us how the system should behave.
+
+And that distinction is extremely important.
+
+### The Questions Hidden Behind Three Classes
+
+Let’s examine what happens when a member attempts to borrow a book.
+
+A seemingly simple operation introduces several design decisions.
+
+**1. Who is responsible for validating availability?**
+
+Should the `Book` object decide whether it can be borrowed?
+
+Should the `Library` check its availability before allowing the operation?
+
+Or should a separate `BorrowingService` coordinate the process?
+
+Each choice produces a different design and different dependencies.
+
+**2. Who creates the Loan?**
+
+Should `Member` create a loan because the member is borrowing the book?
+
+Should `Book` create it because the book is being borrowed?
+
+Should a separate application service create it because borrowing is a use case involving multiple objects?
+
+The answer is not determined by the requirement’s grammar. It requires reasoning about responsibility and ownership.
+
+**3. Where should the borrowing rules live?**
+
+Suppose the library introduces these additional requirements:
+
+- A standard member can borrow a maximum of three books.
+- A premium member can borrow a maximum of seven books.
+- Standard members receive a borrowing period of fourteen days.
+- Premium members receive a borrowing period of thirty days.
+- Books marked as reference-only cannot be borrowed.
+
+Should we place all these conditions inside `Book`?
+
+Should `Member` know about every book restriction?
+
+Should one service contain every rule?
+
+Or should the model distinguish between the objects involved and the policies governing their interactions?
+
+**4. How do we protect the system’s state?**
+
+Consider this implementation:
+
+```ts
+class Book {
+  public available = true;
+}
+```
+
+Any part of the application can now modify the availability directly:
+
+```ts
+book.available = false;
+book.available = true;
+```
+
+Nothing prevents another component from making a book available even though an active loan still exists.
+
+How should we prevent this?
+
+Is using `private` enough?
+
+Or do we need to model the valid state transitions and the conditions under which they can happen?
+
+**5. What happens when two members borrow the same book simultaneously?**
+
+Imagine two requests arrive almost at the same time.
+
+```text
+             Request A                 Request B
+                 |                         |
+                 v                         v
+           Read Book A                Read Book A
+                 |                         |
+                 v                         v
+             Available                  Available
+                 |                         |
+                 v                         v
+            Create Loan                Create Loan
+```
+
+Both requests may observe the book as available before either request updates the database.
+
+Now we have a concurrency problem.
+
+Even if our `Book` class has a perfectly implemented `borrow()` method, that method alone cannot guarantee consistency across multiple application processes.
+
+So where should this guarantee be enforced?
+
+Inside the object?
+
+Inside the application service?
+
+At the database transaction boundary?
+
+This question takes us beyond basic OOP and into actual backend engineering.
+
+### The Real Problem Is Not Creating Classes
+
+Notice something interesting about the questions above.
+
+We haven’t written any meaningful implementation yet, but we have already encountered:
+
+- Domain modeling.
+- Object discovery.
+- Responsibility assignment.
+- Encapsulation and invariants.
+- State transitions.
+- Cohesion and coupling.
+- Application coordination.
+- Transaction boundaries.
+- Concurrency control.
+
+These are all fundamental concerns of Low-Level Design.
+
+A class diagram can show us that `Member`, `Book`, and `Loan` exist. But it cannot automatically tell us whether the responsibilities have been assigned correctly or whether the system can preserve its business rules under concurrent operations.
+
+That requires deliberate design.
+
+### What Are We Actually Trying to Learn?
+
+Throughout this article, we will use the library management system as a continuous case study.
+
+Instead of immediately jumping into implementation, we’ll reason about the system layer by layer.
+
+We will explore:
+
+- **Object Discovery:** How do we identify meaningful domain concepts rather than blindly converting every noun into a class?
+- **Entities and Value Objects:** How do we distinguish identity from value, and why does that distinction influence our model?
+- **Responsibility Assignment:** How do we decide which object should own a particular piece of knowledge or behavior?
+- **Encapsulation and Invariants:** How do we protect an object’s state and ensure that invalid transitions cannot occur?
+- **State Modeling:** How do we represent the lifecycle of objects whose behavior changes over time?
+- **Cohesion and Coupling:** How do we evaluate whether our responsibilities are grouped appropriately and our dependencies are manageable?
+- **Domain and Application Services:** When should behavior belong to an object, when should it belong to a domain service, and when do we need an application service to coordinate a use case?
+- **Consistency and Concurrency:** Why does correct object-oriented modeling still require transaction management and database-level guarantees?
+
+For every concept, we’ll examine what it means, why it exists, how to apply it, when it is useful, and the mental model that helps us make the right design decisions.
+
+The objective is not to memorize a collection of OOP principles or design patterns.
+
+It is to develop the ability to look at a requirement, identify the underlying domain problems, and make defensible decisions about how software should be structured.
+
+Because ultimately:
+
+> LLD is not about deciding how many classes a system needs. It is about deciding where knowledge, behavior, responsibility, and state should live — and how the resulting objects collaborate to preserve the rules of the system.
+
+## 1. Object Discovery — Finding the Right Building Blocks
+
+### What is Object Discovery?
+
+Object discovery is the process of identifying the concepts, responsibilities, relationships, and rules within a problem domain that deserve representation in a software model.
+
+It is one of the earliest and most consequential activities in object-oriented design because every design decision that follows depends on how we understand the problem.
+
+Before deciding which classes to create, which methods to expose, or how objects should collaborate, we need to understand what actually exists in the domain, what matters to the business, and what behavior the system must preserve.
+
+Let’s break that down.
+
+### 1.1 Understanding the Domain
+
+A domain is the specific area of knowledge, activity, or business that a software system is intended to support.
+
+For example:
+
+- Banking software operates in the banking domain.
+- An e-commerce application operates in the commerce domain.
+- A library management system operates in the library domain.
+- Hospital management software operates in the healthcare domain.
+
+Each domain has its own concepts, relationships, constraints, and rules.
+
+Consider a banking system. Concepts such as `Account`, `Customer`, `Transaction`, and `Money` are meaningful because they represent things the banking business understands and operates on.
+
+But the domain is more than a collection of nouns.
+
+A banking system also has rules:
+
+- An account cannot be debited beyond its permitted balance.
+- A transaction must have a valid amount.
+- A completed transaction must not be processed again.
+- A transfer must debit one account and credit another consistently.
+
+These rules are just as important as the concepts themselves.
+
+A useful software model must represent both:
+
+- The things that exist in the domain.
+- The rules that govern how those things behave and interact.
+
+If we identify the concepts but ignore their rules, we may end up with classes that merely store data without protecting the meaning of that data.
+
+### 1.2 Why Object Discovery Matters
+
+Imagine receiving the following requirement:
+
+> A customer places an order containing multiple products. Each order has a shipping address, payment status, and total amount.
+
+A straightforward approach might be to extract every noun and create a corresponding class:
+
+- Customer
+- Order
+- Product
+- ShippingAddress
+- PaymentStatus
+- TotalAmount
+
+This looks reasonable initially. But it introduces an important question:
+
+Are all these concepts actually objects with their own identity, behavior, and lifecycle?
+
+Not necessarily.
+
+Creating a class for every noun can produce an unnecessarily complicated model. On the other hand, combining unrelated concepts into a single class can create objects with too many responsibilities.
+
+The goal is neither to maximize nor minimize the number of classes.
+
+**The goal is to discover the right abstractions.**
+
+### 1.3 Identifying What Deserves an Object
+
+Let’s examine each concept from the requirement.
+
+**Customer**
+
+A customer has an identity that persists independently of individual orders.
+
+A customer can place multiple orders over time. Their name, email address, and other details may change, but the customer remains the same customer.
+
+This suggests that `Customer` is an entity.
+
+**Order**
+
+An order represents a specific purchase made by a customer.
+
+It has its own identity, lifecycle, and business rules.
+
+For example, an order might transition through states such as:
+
+```text
+PENDING → CONFIRMED → SHIPPED → DELIVERED
+```
+
+It may also be cancelled, subject to business constraints.
+
+An order is therefore another entity.
+
+**Product**
+
+A product represents something that can be purchased.
+
+It typically has an identity independent of the orders in which it appears.
+
+However, notice something important: an order should not necessarily depend on the product’s current price.
+
+Suppose a customer purchases a product for ₹1,000. A week later, its price changes to ₹1,200.
+
+Should the historical order now display ₹1,200?
+
+Of course not.
+
+The order needs to preserve the price agreed upon at the time of purchase. This suggests that an `OrderItem` should capture a snapshot of relevant purchase information, such as product identity, quantity, and unit price.
+
+This is already a modeling decision that cannot be discovered by merely extracting nouns.
+
+**ShippingAddress**
+
+A shipping address might contain:
+
+- Street
+- City
+- State
+- Postal code
+- Country
+
+Does it necessarily need an independent identity?
+
+Usually, no. It describes where an order should be delivered.
+
+Two orders may contain identical addresses without referring to the same independently identifiable business object.
+
+This makes `ShippingAddress` a good candidate for a value object.
+
+A value object is generally identified by its attributes rather than by a unique identity. Two shipping addresses with equivalent values can be considered equal.
+
+It may also enforce its own validity rules. For example, a postal code cannot be empty if the domain requires one.
+
+**PaymentStatus**
+
+Payment status might have a limited set of valid values:
+
+- PENDING
+- AUTHORIZED
+- PAID
+- FAILED
+- REFUNDED
+
+This is not necessarily an independent entity. It may be represented by an enumeration.
+
+However, if payment processing grows to include payment attempts, provider references, refunds, authorization, and reconciliation, we may discover that a separate `Payment` entity is needed.
+
+The important point is that the model should evolve with the actual domain complexity.
+
+**TotalAmount**
+
+The total amount is usually derived from the order’s items:
+
+\[
+$$
+\text{Total Amount} = \sum(\text{Quantity} \times \text{Unit Price})
+$$
+\]
+
+But representing money as a primitive number can introduce problems.
+
+For example:
+
+- What currency does the number represent?
+- Can the amount be negative?
+- How should rounding work?
+- Can we accidentally add amounts in different currencies?
+
+A `Money` value object can represent the amount and currency together and enforce the relevant rules.
+
+Whether `TotalAmount` itself deserves a separate class is another question. Often, it is better represented as a calculated property of `Order`, using a `Money` value object as its return type.
+
+### 1.4 A Possible Domain Model
+
+After examining the concepts, we might arrive at this model:
+
+```text
+Customer (Entity)
+    |
+    | places
+    v
+Order (Entity)
+    |
+    | contains
+    v
+OrderItem
+    |
+    | references
+    v
+Product (Entity)
+
+Order
+    |
+    | has
+    v
+ShippingAddress (Value Object)
+
+Order
+    |
+    | calculates
+    v
+Money (Value Object)
+```
+
+Notice that this is not a universal classification.
+
+For example, `OrderItem` could be modeled as a value object if it has no independent identity and is entirely owned by an order. Another domain might require order items to have their own identities and lifecycle.
+
+The correct decision depends on the business rules, not on a universal rule that every concept must belong to a particular category.
+
+### 1.5 How Do We Actually Discover Objects?
+
+Object discovery is an iterative process. We begin with the requirements, develop an initial model, and refine it as we understand the domain more deeply.
+
+A practical approach involves the following steps.
+
+**Step 1: Understand the use cases**
+
+Start by identifying what users and external systems need to accomplish.
+
+For example:
+
+- A customer places an order.
+- A customer views an order.
+- A customer cancels an eligible order.
+- An administrator updates product information.
+- The system confirms payment.
+
+Use cases reveal the activities the system must support.
+
+**Step 2: Identify domain concepts**
+
+Extract candidate concepts from the requirements, conversations with domain experts, and use cases.
+
+At this stage, do not immediately turn every noun into a class.
+
+Instead, build a list of potential concepts and investigate what each one means.
+
+**Step 3: Identify identity and lifecycle**
+
+Ask:
+
+- Does this concept need to be distinguished from another concept with identical attributes?
+- Does it exist independently over time?
+- Can its state change?
+- Does the business need to refer to it later?
+
+These questions help identify entities.
+
+**Step 4: Identify value-based concepts**
+
+Ask:
+
+- Is this concept defined entirely by its attributes?
+- Does it have an independent lifecycle?
+- Should two instances with equivalent values be considered equal?
+- Does it need to enforce validation or calculation rules?
+
+These questions help identify value objects.
+
+**Step 5: Discover relationships and ownership**
+
+Ask how the concepts relate.
+
+For example:
+
+- A customer can place multiple orders.
+- An order contains multiple order items.
+- Each order item refers to a product.
+- An order contains a shipping address.
+- An order has a payment state.
+
+Then investigate ownership.
+
+If an order is deleted, should its order items continue to exist independently? Usually not. This suggests that order items belong to the order’s lifecycle.
+
+**Step 6: Discover invariants and behavior**
+
+An invariant is a condition that must remain true whenever an object is in a valid state.
+
+For an order, possible invariants include:
+
+- An order must contain at least one item before confirmation.
+- An order’s total must agree with its items.
+- A delivered order cannot be cancelled.
+- A quantity must be greater than zero.
+
+These rules help us discover where behavior belongs.
+
+For example, if an order must never be confirmed without items, the `Order` should protect that rule rather than relying on every caller to remember it.
+
+**Step 7: Refine the model**
+
+Review the model against realistic scenarios.
+
+What happens if:
+
+- A product’s price changes after an order is placed?
+- A customer changes their saved address?
+- A payment fails?
+- An order is cancelled after payment?
+- Two requests attempt to cancel and ship the same order concurrently?
+
+If the model cannot represent these situations clearly, it may need additional concepts, relationships, or constraints.
+
+Object discovery is therefore not a one-time activity performed before coding. It continues as we uncover more information about the domain.
+
+### 1.6 A Practical Distinction: Domain Concepts vs Implementation Concepts
+
+One more distinction is important.
+
+Not every class in an application represents a domain concept.
+
+Consider these classes:
+
+- Order
+- Customer
+- ShippingAddress
+- OrderRepository
+- OrderController
+- DatabaseConnection
+- OrderService
+
+They do not all serve the same purpose.
+
+`Order`, `Customer`, and `ShippingAddress` represent concepts from the business domain.
+
+`OrderRepository` represents an abstraction for retrieving and persisting orders.
+
+`OrderController` handles incoming requests.
+
+`DatabaseConnection` manages infrastructure concerns.
+
+`OrderService` might coordinate an application use case, depending on its actual responsibility.
+
+These implementation concepts are necessary, but they should not be confused with the domain model itself.
+
+If we begin object discovery by thinking only about controllers, databases, frameworks, and service classes, we risk designing the application around its technical implementation instead of the business problem it is supposed to solve.
+
+### 1.7 The Mental Model
+
+Think of object discovery as building a map of a business domain.
+
+You are not trying to create a class for every word you encounter.
+
+You are trying to understand:
+
+- What are the important things in this domain?
+- Which things have independent identities?
+- Which concepts are defined by their values?
+- Which things own other things?
+- What can change, and through which operations?
+- What conditions must always remain true?
+- Which rules belong to which concepts?
+
+The resulting model should make the business rules easier to understand, enforce, and evolve.
+
+**Object discovery is not noun extraction. It is the process of turning an understanding of the domain into a meaningful software model.**
+
+And this gives us the next question in Low-Level Design:
+
+Once we have identified the important concepts, how do we decide which objects should be responsible for which behavior?
+
+That brings us to entities, value objects, and responsibility assignment.
+
+### 1.8 Why Do We Need Object Discovery?
+
+Without a deliberate discovery process, developers often make two mistakes.
+
+**Mistake 1: Under-modeling**
+
+They represent everything using primitive properties.
+
+```ts
+type Order = {
+  customerId: string;
+  productIds: string[];
+  total: number;
+  status: string;
+};
+```
+
+This representation may be sufficient for a simple data transfer structure, but it doesn’t explain the business rules.
+
+Can a cancelled order be shipped?
+
+Can the total be negative?
+
+Can an order contain no items?
+
+Who controls these rules?
+
+The data structure doesn’t tell us.
+
+**Mistake 2: Over-modeling**
+
+They create classes for every noun they encounter.
+
+```text
+Order
+OrderName
+OrderStatus
+OrderDate
+OrderTotal
+OrderDescription
+```
+
+This introduces unnecessary abstractions without improving the model.
+
+Good object discovery sits between these extremes.
+
+### 1.9 How Do We Discover Objects? A Library Example
+
+Start with the requirements.
+
+Let’s analyze this requirement:
+
+> A registered member can borrow an available book. The system records the borrowing date and calculates a due date. The member must return the book before the due date.
+
+**Step 1: Identify candidate concepts**
+
+```text
+Member
+Book
+Borrowing
+Borrowing Date
+Due Date
+Return
+```
+
+**Step 2: Ask whether each concept has an independent identity**
+
+A member has an identity.
+
+A physical book copy has an identity.
+
+A borrowing operation also has an identity because we may need to distinguish one borrowing event from another.
+
+A due date usually doesn’t have an independent identity in this context.
+
+It is an attribute of a borrowing transaction.
+
+**Step 3: Identify lifecycle**
+
+Ask whether the concept has a lifecycle independent of other concepts.
+
+A member can exist without currently borrowing anything.
+
+A book can exist without being borrowed.
+
+A loan is created when borrowing occurs and later transitions into a returned or overdue state.
+
+This makes `Loan` a meaningful domain concept.
+
+**Step 4: Identify rules**
+
+Ask what rules apply to each concept.
+
+These rules help reveal where behavior and responsibilities may belong.
+
+### 1.10 When Should We Create a Separate Class?
+
+One of the most common mistakes in Object-Oriented Design is creating a class for every concept or property we encounter.
+
+Suppose we are building an e-commerce application. An order contains a total amount, a shipping address, and a payment status.
+
+Should each of these concepts become a separate class?
+
+Not necessarily.
+
+The important question is not whether a concept exists in our domain. The important question is whether representing it as a separate abstraction gives us a meaningful responsibility, protects important rules, or makes the model easier to understand and maintain.
+
+A class should represent a meaningful concept, not simply act as a container for a few properties.
+
+Let’s understand this through an example.
+
+**1. Start With a Problem, Not a Class**
+
+Imagine we are building an e-commerce application.
+
+An order has a total amount:
+
+```ts
+class Order {
+  total: number;
+}
+```
+
+This works technically. But what does `total` actually represent?
+
+Is it ₹1,000 or $1,000?
+
+Can we add ₹1,000 to $500?
+
+Can the amount be negative?
+
+What happens when JavaScript performs floating-point arithmetic?
+
+```ts
+console.log(10.1 + 20.2);
+
+// 30.299999999999997
+```
+
+Our number represents a numeric value, but it does not represent the complete business concept of money.
+
+A primitive type gives us a value. A domain abstraction can give us that value along with the rules that make it meaningful.
+
+This is where a separate class can become useful.
+
+**2. Identify the Reason for Creating a Class**
+
+Consider three different examples.
+
+*Example A: A Simple Property*
+
+```ts
+class User {
+  name: string;
+}
+```
+
+Does `name` need its own class?
+
+Usually, no.
+
+A string is sufficient if the name has no independent behavior, identity, or meaningful rules that need to be protected.
+
+Creating a separate `UserName` class without a real requirement would introduce unnecessary complexity.
+
+*Example B: A Value With Business Rules*
+
+```ts
+class Money {
+  amount: number;
+  currency: string;
+}
+```
+
+Money is more than a number.
+
+It has meaningful rules:
+
+- You should not directly add different currencies.
+- Monetary operations must follow consistent precision rules.
+- Rounding must be handled deliberately.
+- Negative amounts may or may not be valid depending on the operation.
+- Two monetary values should be compared using both amount and currency.
+
+A separate `Money` class gives these rules a clear home.
+
+*Example C: A Concept With Identity and Lifecycle*
+
+```ts
+class Order {
+  id: string;
+  status: OrderStatus;
+}
+```
+
+An order has an identity.
+
+Even if two orders contain exactly the same products, quantities, and prices, they are still two different orders.
+
+An order also has a lifecycle. It might move through states such as:
+
+```text
+PENDING → CONFIRMED → SHIPPED → DELIVERED
+```
+
+It may also be cancelled, subject to business constraints.
+
+This makes `Order` an entity rather than merely a collection of properties.
+
+**3. A Practical Decision-Making Framework**
+
+When deciding whether a concept deserves a separate class, ask the following questions:
+
+- Does it have an independent identity?
+- Does it have meaningful behavior?
+- Does it enforce business rules?
+- Does it have a lifecycle?
+- Does it protect invariants?
+- Does separating it improve the model?
+
+These are design signals, not absolute laws.
+
+For example, an entity can contain value objects and business behavior. A value object can also have validation and calculations.
+
+The decision depends on the actual domain requirements.
+
+**4. A Design Pattern: Value Object Pattern**
+
+One useful pattern for modeling concepts such as money, addresses, dates, and measurements is the Value Object Pattern.
+
+It comes from Domain-Driven Design (DDD).
+
+The central idea is:
+
+> Represent a domain concept by its value rather than by an independent identity, and keep its validation and behavior together with that value.
+
+Let’s implement it.
+
+*Step 1: The Primitive Approach*
+
+Imagine we represent money using two unrelated primitive values:
+
+```ts
+class Order {
+  constructor(
+    public total: number,
+    public currency: string
+  ) {}
+}
+
+const order = new Order(1000, "INR");
+```
+
+This approach has a problem.
+
+Nothing prevents other parts of the application from doing this:
+
+```ts
+order.total = -500;
+order.currency = "INVALID";
+```
+
+We have data, but we have not protected its meaning.
+
+*Step 2: Introduce a Money Value Object*
+
+Instead of passing around an amount and currency independently, we introduce a single domain concept.
+
+```ts
+class Money {
+  private constructor(
+    public readonly amountInMinorUnits: bigint,
+    public readonly currency: string
+  ) {}
+
+  static create(
+    amountInMinorUnits: bigint,
+    currency: string
+  ): Money {
+    if (amountInMinorUnits < 0n) {
+      throw new Error("Money cannot be negative");
+    }
+
+    if (!/^[A-Z]{3}$/.test(currency)) {
+      throw new Error("Invalid currency code");
+    }
+
+    return new Money(amountInMinorUnits, currency);
+  }
+
+  add(other: Money): Money {
+    if (this.currency !== other.currency) {
+      throw new Error("Cannot add different currencies");
+    }
+
+    return Money.create(
+      this.amountInMinorUnits + other.amountInMinorUnits,
+      this.currency
+    );
+  }
+
+  equals(other: Money): boolean {
+    return (
+      this.amountInMinorUnits === other.amountInMinorUnits &&
+      this.currency === other.currency
+    );
+  }
+}
+```
+
+For this example, we store monetary amounts in minor units:
+
+- ₹100 = 10,000 paise.
+- $100 = 10,000 cents.
+
+Using integer minor units avoids common floating-point precision problems for these currencies.
+
+A production implementation should also account for currency-specific precision, rounding policies, and supported currency codes.
+
+*Step 3: Understand How the Object Protects Its Rules*
+
+```ts
+const price = Money.create(10000n, "INR");
+const tax = Money.create(1800n, "INR");
+const total = price.add(tax);
+```
+
+The result represents ₹118.
+
+Now consider:
+
+```ts
+const dollars = Money.create(5000n, "USD");
+
+price.add(dollars);
+```
+
+This operation fails because the currencies are different.
+
+Notice what happened.
+
+We did not need to repeat currency validation in every service, controller, or order operation.
+
+The `Money` object owns that responsibility.
+
+Also notice that `add()` returns a new Money object rather than modifying the existing one.
+
+This is immutability, a common characteristic of value objects.
+
+**5. Apply the Pattern to a Real Order Model**
+
+Let’s connect these concepts.
+
+An order contains multiple items.
+
+Each item has:
+
+- A product ID.
+- A quantity.
+- A unit price.
+
+The subtotal of an item is calculated by multiplying its quantity by its unit price.
+
+The total of an order is the sum of all its item subtotals.
+
+*Step 1: Add Multiplication to Money*
+
+Instead of repeatedly adding the same monetary value, we can introduce a multiplication operation.
+
+```ts
+multiply(quantity: number): Money {
+  if (!Number.isInteger(quantity) || quantity < 0) {
+    throw new Error("Invalid quantity");
+  }
+
+  return Money.create(
+    this.amountInMinorUnits * BigInt(quantity),
+    this.currency
+  );
+}
+```
+
+Now our Money object supports monetary addition and multiplication while preserving currency compatibility.
+
+*Step 2: Create OrderItem*
+
+```ts
+class OrderItem {
+  constructor(
+    public readonly productId: string,
+    public readonly quantity: number,
+    public readonly unitPrice: Money
+  ) {
+    if (!Number.isInteger(quantity) || quantity <= 0) {
+      throw new Error("Quantity must be positive");
+    }
+  }
+
+  get subtotal(): Money {
+    return this.unitPrice.multiply(this.quantity);
+  }
+}
+```
+
+An `OrderItem` represents a particular product purchase within an order.
+
+It preserves the unit price associated with that purchase rather than relying on the product’s current price.
+
+This matters because product prices can change over time, but historical orders should retain their original purchase prices.
+
+*Step 3: Create Order*
+
+```ts
+class Order {
+  constructor(
+    public readonly id: string,
+    private readonly items: OrderItem[]
+  ) {
+    if (items.length === 0) {
+      throw new Error("An order must contain items");
+    }
+  }
+
+  get total(): Money {
+    return this.items.reduce(
+      (sum, item) => sum.add(item.subtotal),
+      Money.create(0n, this.items[0].unitPrice.currency)
+    );
+  }
+}
+```
+
+Our order calculates its total using the subtotals of its items.
+
+In a production implementation, the order should also verify that all items use the same currency before calculating the total.
+
+*Step 4: Understand the Responsibilities*
+
+We now have three separate concepts:
+
+```text
+Money
+  - represents amount and currency
+  - validates monetary operations
+  - handles arithmetic
+
+OrderItem
+  - represents a product purchase
+  - knows quantity and unit price
+  - calculates its subtotal
+
+Order
+  - owns its items
+  - ensures an order contains items
+  - calculates the order total
+```
+
+Each object has a clear responsibility.
+
+Instead of placing every property and calculation inside `Order`, we have distributed the behavior according to the concepts that own the relevant rules.
+
+This makes the model easier to understand, test, and extend.
+
+**6. The Mental Model: A Class Is a Boundary Around Rules**
+
+Think about what happens without a Money class.
+
+Every part of the application that handles money must remember how money works.
+
+The order service must validate currency.
+
+The payment service must validate currency.
+
+The refund service must validate currency.
+
+Eventually, someone may forget a rule or implement it differently.
+
+With a `Money` value object, the rules have one place.
+
+*Without a Domain Object*
+
+```text
+Primitive values
+    |
+    |-- Order Service
+    |      |-- Currency validation
+    |
+    |-- Payment Service
+    |      |-- Currency validation
+    |
+    |-- Refund Service
+           |-- Currency validation
+```
+
+*With a Domain Object*
+
+```text
+                 Money
+                   |
+          Monetary rules and
+             arithmetic
+                   |
+          -----------------
+          |       |       |
+        Order  Payment  Refund
+```
+
+Each part of the application uses the same abstraction rather than reimplementing its rules.
+
+This is the real benefit of introducing a domain object.
+
+It creates a boundary around the knowledge and behavior associated with a concept.
+
+**7. An Important Warning: Don’t Overengineer**
+
+The goal is not to turn every property into a class.
+
+Consider this:
+
+```ts
+class UserName {
+  constructor(public value: string) {}
+}
+
+class UserEmail {
+  constructor(public value: string) {}
+}
+
+class UserAge {
+  constructor(public value: number) {}
+}
+```
+
+If these classes have no meaningful behavior, validation, or domain significance, they may simply add unnecessary indirection.
+
+However, if `UserEmail` must enforce normalization, validation, and equality rules throughout the application, a dedicated value object may be worthwhile.
+
+The decision should be based on the complexity and meaning of the domain concept, not on the number of properties it contains.
+
+The principle is simple: introduce an abstraction when it gives a meaningful concept a clear responsibility or protects a rule that would otherwise be scattered throughout the system.
+
+**8. A Mental Checklist**
+
+Before creating a separate class, ask yourself:
+
+- What does this concept represent in the domain?
+- Does it have an identity independent of other objects?
+- Is it defined by its values?
+- Does it have meaningful business rules?
+- Does it need to protect invariants?
+- Does it have a lifecycle?
+- Will separating it make the model easier to understand?
+- Would a primitive type already express everything we need?
+
+If a separate class does not provide a meaningful benefit, don’t create one just for the sake of object-oriented design.
+
+## 2. Entity vs Value Object — Identity and Equality
+
+Object discovery naturally leads to another important distinction.
+
+Not every object is identified in the same way.
+
+Some objects are defined by identity.
+
+Others are defined by their values.
+
+These are commonly called Entities and Value Objects.
+
+### 2.1 What Is an Entity?
+
+An entity is an object whose identity remains important even when its attributes change.
+
+```ts
+class User {
+  constructor(
+    public readonly id: string,
+    public name: string,
+    public email: string
+  ) {}
+}
+```
+
+Suppose:
+
+```ts
+const user = new User(
+  "user_123",
+  "Keshav",
+  "keshav@example.com"
+);
+```
+
+Later, the user changes their email address.
+
+The user is still the same user.
+
+Their identity has not changed.
+
+```text
+User ID: user_123
+
+Before:
+name  = Keshav
+email = old@example.com
+
+After:
+name  = Keshav
+email = new@example.com
+```
+
+The attributes changed, but the entity remained the same.
+
+**Why do we need entities?**
+
+Real systems frequently need to track things across time.
+
+Examples:
+
+- A user changes their name.
+- An order changes its status.
+- A bank account receives deposits.
+- A book changes its availability.
+- A subscription moves between plans.
+
+In all these cases, we need to recognize the same conceptual object after its state changes.
+
+Identity provides that continuity.
+
+**How do we model an entity?**
+
+Usually, an entity has a stable identifier.
+
+```ts
+class Order {
+  constructor(
+    public readonly id: string,
+    private status: OrderStatus
+  ) {}
+}
+```
+
+Two orders can have identical attributes but still be different orders.
+
+```text
+Order A:
+id = order_1
+total = 1000
+
+Order B:
+id = order_2
+total = 1000
+```
+
+They have the same total, but they are not the same order.
+
+### 2.2 What Is a Value Object?
+
+A value object is defined by its values rather than an independent identity.
+
+Consider an address:
+
+```ts
+type Address = {
+  street: string;
+  city: string;
+  postalCode: string;
+};
+```
+
+Two addresses with identical values can be considered equal in the relevant domain context.
+
+```ts
+const addressA = {
+  street: "MG Road",
+  city: "Bengaluru",
+  postalCode: "560001"
+};
+
+const addressB = {
+  street: "MG Road",
+  city: "Bengaluru",
+  postalCode: "560001"
+};
+```
+
+We don’t necessarily care whether `addressA` and `addressB` are the same object in memory.
+
+We care whether they represent the same address value.
+
+A more expressive implementation:
+
+```ts
+class Money {
+  constructor(
+    public readonly amount: number,
+    public readonly currency: string
+  ) {
+    if (!Number.isFinite(amount)) {
+      throw new Error("Invalid monetary amount");
+    }
+
+    if (!currency) {
+      throw new Error("Currency is required");
+    }
+  }
+
+  add(other: Money): Money {
+    if (this.currency !== other.currency) {
+      throw new Error("Currency mismatch");
+    }
+
+    return new Money(
+      this.amount + other.amount,
+      this.currency
+    );
+  }
+
+  equals(other: Money): boolean {
+    return (
+      this.amount === other.amount &&
+      this.currency === other.currency
+    );
+  }
+}
+```
+
+Notice that `Money` does not need a database ID to be meaningful.
+
+Its value is what matters.
+
+**Why use Value Objects?**
+
+They allow us to express domain rules without repeatedly handling primitive values.
+
+For example:
+
+```ts
+const total = 1000;
+const discount = 200;
+```
+
+What are these numbers?
+
+Are they rupees, dollars, percentages, or quantities?
+
+A Money abstraction gives the value meaning.
+
+It also allows us to centralize validation and arithmetic rules.
+
+**When should we use them?**
+
+Use entities when identity and lifecycle matter.
+
+Use value objects when values define equality and the object has no independent identity in the domain.
+
+These examples depend on the domain. An ISBN can be a value used to identify a book edition, while an individual physical book copy may be an entity.
+
+## 3. Responsibility Assignment — Deciding Where Behavior Belongs
+
+Identifying objects is only half the work.
+
+Now we need to decide which object should perform which operation.
+
+This is called responsibility assignment.
+
+### What Is a Responsibility?
+
+A responsibility is an obligation an object has within the system.
+
+It generally falls into two categories.
+
+**Knowing responsibilities**
+
+- Knowing its own state.
+- Knowing related domain information.
+- Knowing information it can calculate.
+
+**Doing responsibilities**
+
+- Validating an operation.
+- Changing internal state.
+- Creating related objects.
+- Coordinating behavior through other components.
+
+For example:
+
+```text
+Book
+  - knows its availability
+  - changes its availability
+
+Loan
+  - knows its due date
+  - tracks its return status
+
+Member
+  - knows member-specific information
+```
+
+The important question is:
+
+**Who should own a particular behavior?**
+
+### Why Does Responsibility Assignment Matter?
+
+Consider this implementation:
+
+```ts
+class Library {
+  books: Book[] = [];
+  members: Member[] = [];
+  loans: Loan[] = [];
+
+  borrowBook(memberId: string, bookId: string) {
+    const book = this.books.find(
+      item => item.id === bookId
+    );
+
+    const member = this.members.find(
+      item => item.id === memberId
+    );
+
+    if (!book || !member) {
+      throw new Error("Invalid member or book");
+    }
+
+    if (!book.available) {
+      throw new Error("Book unavailable");
+    }
+
+    book.available = false;
+
+    const loan = new Loan(
+      crypto.randomUUID(),
+      bookId,
+      memberId
+    );
+
+    this.loans.push(loan);
+  }
+}
+```
+
+The `Library` class is doing everything:
+
+- Searching for books.
+- Searching for members.
+- Validating availability.
+- Modifying book state.
+- Creating loans.
+- Managing loan collections.
+
+As the application grows, this class becomes a central location for unrelated business rules.
+
+This makes changes harder to isolate.
+
+Responsibility assignment gives us a way to distribute those concerns.
+
+### How Do We Assign Responsibilities?
+
+A useful technique comes from GRASP: General Responsibility Assignment Software Patterns.
+
+Let’s examine the most relevant ones.
+
+### 3.1 Information Expert
+
+**What?**
+
+Information Expert suggests assigning a responsibility to the object that has the information necessary to fulfill it.
+
+**Why?**
+
+If an object already owns the information required for an operation, placing the behavior there can reduce unnecessary dependencies and improve encapsulation.
+
+**Example**
+
+Suppose we need to calculate an order total.
+
+```ts
+class Order {
+  constructor(
+    private readonly items: OrderItem[]
+  ) {}
+
+  calculateTotal(): number {
+    return this.items.reduce(
+      (total, item) => total + item.subtotal(),
+      0
+    );
+  }
+}
+
+class OrderItem {
+  constructor(
+    private readonly price: number,
+    private readonly quantity: number
+  ) {}
+
+  subtotal(): number {
+    return this.price * this.quantity;
+  }
+}
+```
+
+Why does `OrderItem` calculate its subtotal?
+
+Because it knows its price and quantity.
+
+Why does `Order` calculate the total?
+
+Because it knows which items belong to the order.
+
+Each object has the information needed for its responsibility.
+
+**When?**
+
+Use Information Expert when deciding where a behavior should live and one object already has the relevant domain knowledge.
+
+**Mental Model**
+
+Put behavior close to the information it needs.
+
+But don’t apply this mechanically. An object should not acquire unrelated responsibilities just because it can access some required data.
+
+### 3.2 Creator
+
+**What?**
+
+Creator suggests assigning object creation to a class that has a meaningful relationship with the created object.
+
+For example, an object may be a suitable creator when it:
+
+- Contains the created object.
+- Records it.
+- Closely uses it.
+- Has the information required to initialize it.
+
+**Why?**
+
+Creation often belongs near the object that knows the context required for initialization.
+
+**Example**
+
+```ts
+class Order {
+  private items: OrderItem[] = [];
+
+  addItem(
+    productId: string,
+    price: Money,
+    quantity: number
+  ): void {
+    const item = new OrderItem(
+      productId,
+      price,
+      quantity
+    );
+
+    this.items.push(item);
+  }
+}
+```
+
+The order creates an order item because it owns the collection of items and provides the context for adding one.
+
+**When?**
+
+Use Creator when an object has a strong ownership or containment relationship with the object being created.
+
+**Mental Model**
+
+The object that naturally owns or organizes something is often a good candidate to create it.
+
+### 3.3 Controller
+
+**What?**
+
+Controller suggests assigning responsibility for handling a system event to a non-UI object that represents the use case or coordinates the operation.
+
+For example:
+
+```ts
+class CheckoutController {
+  async checkout(customerId: string) {
+    // Coordinate checkout use case
+  }
+}
+```
+
+The controller receives a system-level request and coordinates the necessary objects.
+
+**Why?**
+
+It prevents UI handlers, HTTP routes, or other delivery mechanisms from accumulating business workflow logic.
+
+**How?**
+
+An HTTP route might look like:
+
+```ts
+app.post("/checkout", async (request, reply) => {
+  const result = await checkoutService.execute(
+    request.body
+  );
+
+  return reply.send(result);
+});
+```
+
+The route translates the HTTP request into an application operation.
+
+The service coordinates the use case.
+
+The domain objects enforce their own rules.
+
+**When?**
+
+Use a controller or application service when a use case involves multiple domain objects or infrastructure operations.
+
+**Mental Model**
+
+A controller coordinates a conversation between objects. It should not become the place where every domain rule lives.
+
+## 4. Encapsulation and Invariants — Protecting the Object’s Rules
+
+### What Is Encapsulation?
+
+Encapsulation is the practice of controlling access to an object’s internal state and exposing operations through which that state can be observed or changed.
+
+But simply declaring a field private is not enough.
+
+The deeper objective is protecting invariants.
+
+### What Is an Invariant?
+
+An invariant is a condition that must remain true for an object to be considered valid.
+
+Consider a bank account.
+
+```text
+balance >= 0
+```
+
+If negative balances are not permitted by the domain, every valid operation must preserve this condition.
+
+### A Bad Design
+
+```ts
+class BankAccount {
+  public balance = 1000;
+}
+```
+
+Any caller can do this:
+
+```ts
+account.balance = -50000;
+```
+
+The object has no control over its own validity.
+
+### A Better Design
+
+```ts
+class BankAccount {
+  private balance: Money;
+
+  constructor(initialBalance: Money) {
+    if (initialBalance.amount < 0) {
+      throw new Error("Invalid initial balance");
+    }
+
+    this.balance = initialBalance;
+  }
+
+  deposit(amount: Money): void {
+    if (amount.amount <= 0) {
+      throw new Error("Deposit must be positive");
+    }
+
+    this.balance = this.balance.add(amount);
+  }
+
+  withdraw(amount: Money): void {
+    if (amount.amount <= 0) {
+      throw new Error("Withdrawal must be positive");
+    }
+
+    if (amount.amount > this.balance.amount) {
+      throw new Error("Insufficient balance");
+    }
+
+    this.balance = new Money(
+      this.balance.amount - amount.amount,
+      this.balance.currency
+    );
+  }
+
+  getBalance(): Money {
+    return this.balance;
+  }
+}
+```
+
+Now the object controls how its state changes.
+
+### Why Does Encapsulation Matter?
+
+Without encapsulation, domain rules become distributed across callers.
+
+Imagine five different parts of an application directly modifying a bank account balance.
+
+Each caller must remember the same validation rules.
+
+Eventually, one caller forgets a check.
+
+The result is invalid state.
+
+Encapsulation centralizes the rules in the object that owns the state.
+
+### How Should We Design State-Changing Methods?
+
+A useful sequence:
+
+1. Validate the requested operation.
+2. Check the current state.
+3. Verify that the transition is allowed.
+4. Perform the state change.
+5. Preserve all invariants.
+
+For example:
+
+```ts
+class Subscription {
+  private status: "ACTIVE" | "CANCELLED" = "ACTIVE";
+
+  cancel(): void {
+    if (this.status === "CANCELLED") {
+      throw new Error("Subscription already cancelled");
+    }
+
+    this.status = "CANCELLED";
+  }
+}
+```
+
+The transition is owned by the object.
+
+### When Should We Enforce Invariants?
+
+At the boundary where invalid state could enter the model.
+
+This includes:
+
+- Object construction.
+- State-changing methods.
+- Deserialization boundaries.
+- Persistence rehydration.
+- External input validation.
+
+One important distinction: validation of HTTP input and enforcement of domain invariants are related but not identical.
+
+An API may validate that a request contains a positive number.
+
+The domain object must still enforce the rule that a withdrawal cannot exceed the account balance.
+
+The API protects the request boundary.
+
+The domain protects the business rule.
+
+### Mental Model
+
+An object should behave like a small guarded environment.
+
+External code can request a change, but the object decides whether that change is valid.
+
+Don’t expose mutable state and hope every caller behaves correctly. Design operations that make invalid transitions difficult or impossible.
+
+## 5. State Modeling — Objects Have Lifecycles
+
+Many business concepts are not static.
+
+An order changes over time.
+
+A payment changes over time.
+
+A subscription changes over time.
+
+A loan changes over time.
+
+Representing these concepts with unrelated boolean properties can create ambiguous states.
+
+### What Is State Modeling?
+
+State modeling is the process of defining:
+
+- The possible states of an object.
+- The events that trigger transitions.
+- The transitions allowed by the domain.
+- The transitions that must be rejected.
+
+### Why Do We Need It?
+
+Consider this implementation:
+
+```ts
+class Order {
+  isPaid = false;
+  isCancelled = false;
+  isShipped = false;
+  isDelivered = false;
+}
+```
+
+What does this represent?
+
+Could an order be both cancelled and delivered?
+
+Could it be shipped without being paid?
+
+Could it be delivered without being shipped?
+
+The boolean properties permit combinations that may not make sense.
+
+An explicit state model is clearer.
+
+```ts
+type OrderStatus =
+  | "PENDING"
+  | "CONFIRMED"
+  | "SHIPPED"
+  | "DELIVERED"
+  | "CANCELLED";
+```
+
+Now define transitions.
+
+```ts
+class Order {
+  private status: OrderStatus = "PENDING";
+
+  confirm(): void {
+    if (this.status !== "PENDING") {
+      throw new Error("Order cannot be confirmed");
+    }
+
+    this.status = "CONFIRMED";
+  }
+
+  ship(): void {
+    if (this.status !== "CONFIRMED") {
+      throw new Error("Order cannot be shipped");
+    }
+
+    this.status = "SHIPPED";
+  }
+
+  deliver(): void {
+    if (this.status !== "SHIPPED") {
+      throw new Error("Order cannot be delivered");
+    }
+
+    this.status = "DELIVERED";
+  }
+
+  cancel(): void {
+    if (
+      this.status === "SHIPPED" ||
+      this.status === "DELIVERED" ||
+      this.status === "CANCELLED"
+    ) {
+      throw new Error("Order cannot be cancelled");
+    }
+
+    this.status = "CANCELLED";
+  }
+}
+```
+
+### How Do We Model Complex Lifecycles?
+
+For larger workflows, define a transition table.
+
+| Current State | Event | Next State |
+|---|---|---|
+| PENDING | confirm | CONFIRMED |
+| PENDING | cancel | CANCELLED |
+| CONFIRMED | ship | SHIPPED |
+| CONFIRMED | cancel | CANCELLED |
+| SHIPPED | deliver | DELIVERED |
+| DELIVERED | cancel | Rejected |
+| CANCELLED | ship | Rejected |
+
+Any transition not represented by the table should be rejected unless explicitly allowed.
+
+For even more complex workflows, a dedicated state machine may be more appropriate than a large collection of conditional statements.
+
+### When Should We Use State Machines?
+
+Use explicit state modeling when:
+
+- An object has several lifecycle stages.
+- Certain transitions are forbidden.
+- Multiple events can change its state.
+- The order of operations matters.
+- State-dependent behavior is becoming difficult to reason about.
+
+## 6. Cohesion and Coupling — Measuring Design Quality
+
+A class can have valid responsibilities and still be poorly designed.
+
+To understand why, we need two important concepts: cohesion and coupling.
+
+### 6.1 Cohesion
+
+Cohesion describes how closely related the responsibilities inside a component are.
+
+Consider:
+
+```ts
+class Order {
+  calculateTotal() {}
+  addItem() {}
+  removeItem() {}
+  validateItems() {}
+}
+```
+
+These methods all concern the order and its items.
+
+Now consider:
+
+```ts
+class Order {
+  calculateTotal() {}
+  addItem() {}
+  sendEmail() {}
+  generatePdf() {}
+  connectToRedis() {}
+}
+```
+
+These responsibilities do not naturally belong together.
+
+When responsibilities are cohesive, changes to a particular concept tend to remain localized.
+
+When unrelated concerns are grouped together, a change in one area can affect unrelated behavior.
+
+**How?**
+
+Ask:
+
+- Do these methods operate on the same domain concept?
+- Do they protect the same invariants?
+- Do they change for similar reasons?
+- Does the class have a clear purpose?
+
+Evaluate cohesion when a class keeps accumulating methods or becomes difficult to understand.
+
+**Mental Model**
+
+A cohesive class should tell one understandable story.
+
+Its methods should feel like different operations around the same concept, not unrelated utilities sharing a file.
+
+### 6.2 Coupling
+
+Coupling describes how strongly one component depends on another.
+
+Consider:
+
+```ts
+class ReportService {
+  private database = new PostgreSQLDatabase();
+  private storage = new S3Storage();
+
+  async generateReport() {
+    const data = await this.database.query();
+    await this.storage.upload(data);
+  }
+}
+```
+
+`ReportService` depends directly on two concrete implementations.
+
+Changing the database or storage implementation can require changes to the service.
+
+Strong implementation dependencies can make components harder to test, replace, and evolve independently.
+
+Depend on stable contracts where the flexibility is valuable.
+
+```ts
+interface ReportRepository {
+  fetchReportData(): Promise<ReportData>;
+}
+
+interface FileStorage {
+  upload(
+    filename: string,
+    content: Uint8Array
+  ): Promise<void>;
+}
+```
+
+Then:
+
+```ts
+class ReportService {
+  constructor(
+    private readonly repository: ReportRepository,
+    private readonly storage: FileStorage
+  ) {}
+
+  async generateReport(): Promise<void> {
+    const data = await this.repository.fetchReportData();
+
+    await this.storage.upload(
+      "report.json",
+      new TextEncoder().encode(JSON.stringify(data))
+    );
+  }
+}
+```
+
+The service depends on capabilities rather than specific infrastructure implementations.
+
+**When?**
+
+Use abstractions when they create a meaningful boundary:
+
+- Infrastructure replacement.
+- Testing isolation.
+- Independent module development.
+- Multiple implementations.
+- External system integration.
+
+Do not create interfaces for every class simply because interfaces exist.
+
+**Mental Model**
+
+Cohesion asks:
+
+> Does this component belong together internally?
+
+Coupling asks:
+
+> How much does this component depend on the outside world?
+
+A good design aims for strong internal relationships and controlled external dependencies.
+
+## 7. The God Object and Single Responsibility Principle
+
+A God Object is a class that accumulates too much knowledge and too many responsibilities.
+
+Consider:
+
+```ts
+class EcommerceManager {
+  registerCustomer() {}
+  updateCustomer() {}
+
+  createProduct() {}
+  updateInventory() {}
+  createOrder() {}
+  calculateTotal() {}
+  processPayment() {}
+  issueRefund() {}
+  sendEmail() {}
+  generateInvoice() {}
+  generateAnalytics() {}
+}
+```
+
+The class has become responsible for several different business areas.
+
+### Why Is This a Problem?
+
+Imagine the following changes:
+
+- Inventory reservation rules change.
+- Payment provider changes.
+- Email provider changes.
+- Invoice formatting changes.
+- Customer registration rules change.
+
+All these changes may affect one class.
+
+The result is a component with many unrelated reasons to change.
+
+This is where the Single Responsibility Principle becomes relevant.
+
+### What Is SRP?
+
+The Single Responsibility Principle states:
+
+> A module should have one reason to change.
+
+It does not mean one method per class.
+
+It means that a class should have a cohesive responsibility aligned with a particular source of change.
+
+### How Do We Apply SRP?
+
+We can separate the example into meaningful responsibilities:
+
+```text
+Customer
+Product
+Inventory
+Order
+Payment
+RefundService
+NotificationService
+InvoiceGenerator
+AnalyticsService
+```
+
+But we must be careful.
+
+Creating a separate class for every method can introduce unnecessary complexity.
+
+The objective is meaningful separation, not maximum class count.
+
+### When Should We Split a Class?
+
+Consider splitting when:
+
+- It has unrelated responsibilities.
+- Different business rules change independently.
+- It depends on unrelated infrastructure systems.
+- Tests require extensive setup for unrelated features.
+- Modifying one concern repeatedly breaks another.
+
+A class should have a clear reason to exist and a clear reason to change.
+
+If you cannot explain what a class is responsible for in one coherent statement, examine whether it contains multiple responsibilities.
+
+## 8. Domain Services vs Application Services
+
+This distinction is particularly important when designing backend systems.
+
+Developers often create a `UserService`, `OrderService`, or `PaymentService` without understanding what kind of service they are implementing.
+
+Let’s distinguish two concepts.
+
+### 8.1 Domain Service
+
+A domain service contains domain behavior that does not naturally belong to a single entity or value object.
+
+Consider a transfer between two bank accounts.
+
+The operation involves two accounts.
+
+```ts
+class BankAccount {
+  constructor(
+    public readonly id: string,
+    private balance: number
+  ) {}
+
+  debit(amount: number): void {
+    if (amount <= 0 || amount > this.balance) {
+      throw new Error("Invalid debit");
+    }
+
+    this.balance -= amount;
+  }
+
+  credit(amount: number): void {
+    if (amount <= 0) {
+      throw new Error("Invalid credit");
+    }
+
+    this.balance += amount;
+  }
+}
+```
+
+Where should the transfer rule live?
+
+It involves two accounts.
+
+We could introduce a domain service:
+
+```ts
+class MoneyTransferService {
+  transfer(
+    source: BankAccount,
+    destination: BankAccount,
+    amount: number
+  ): void {
+    source.debit(amount);
+    destination.credit(amount);
+  }
+}
+```
+
+The transfer is a domain operation that involves multiple entities.
+
+However, this example is only an in-memory illustration. A real transfer needs transactional guarantees and potentially additional domain rules.
+
+Some domain behavior does not naturally belong to one entity.
+
+Forcing it into one object can create artificial ownership.
+
+Use a domain service when a meaningful domain operation spans multiple objects and does not naturally belong to one of them.
+
+### 8.2 Application Service
+
+An application service coordinates a use case.
+
+It handles the workflow required to execute an application operation.
+
+For example:
+
+```text
+Place Order
+    |
+    +---- Load Customer
+    |
+    +---- Load Cart
+    |
+    +---- Validate Order
+    |
+    +---- Reserve Inventory
+    |
+    +---- Save Order
+    |
+    +---- Initiate Payment
+```
+
+The application service coordinates these steps.
+
+```ts
+class PlaceOrderService {
+  constructor(
+    private readonly customers: CustomerRepository,
+    private readonly carts: CartRepository,
+    private readonly orders: OrderRepository
+  ) {}
+
+  async execute(customerId: string): Promise<Order> {
+    const customer = await this.customers.findById(customerId);
+
+    if (!customer) {
+      throw new Error("Customer not found");
+    }
+
+    const cart = await this.carts.findByCustomerId(customerId);
+
+    if (!cart || cart.isEmpty()) {
+      throw new Error("Cart is empty");
+    }
+
+    const order = Order.createFromCart(customer, cart);
+
+    await this.orders.save(order);
+
+    return order;
+  }
+}
+```
+
+This service coordinates the use case.
+
+It does not need to contain every rule related to orders, customers, or carts.
+
+Application workflows often involve multiple domain objects and infrastructure operations.
+
+A dedicated application service keeps that coordination out of HTTP routes and domain entities.
+
+Use application services for use cases such as:
+
+- Register User.
+- Place Order.
+- Transfer Money.
+- Borrow Book.
+- Cancel Subscription.
+
+A domain service expresses domain behavior.
+
+An application service orchestrates an application use case.
+
+They may both be called services, but their responsibilities are different.
+
+## 9. Applying the Concepts: A Library Management System
+
+Now let’s bring the concepts together.
+
+We will model a library with the following requirements:
+
+- Members can borrow books.
+- A book can have only one active loan at a time.
+- Each loan has a borrowing date and due date.
+- Members can return borrowed books.
+- A loan cannot be returned twice.
+- Borrowing must be consistent even when multiple requests happen concurrently.
+
+### 9.1 First: Define the Domain
+
+For this example, assume each `Book` represents one physical copy.
+
+Our domain concepts:
+
+```text
+Member
+Book
+Loan
+BorrowingPolicy
+```
+
+Their responsibilities:
+
+| Concept | Responsibility |
+|---|---|
+| Member | Represents a registered member |
+| Book | Owns the availability state of a physical copy |
+| Loan | Represents a borrowing transaction and its lifecycle |
+| BorrowingPolicy | Calculates borrowing periods and due dates |
+
+### 9.2 Model the Book
+
+```ts
+class Book {
+  private borrowed: boolean;
+
+  constructor(
+    public readonly id: string,
+    public readonly title: string,
+    borrowed = false
+  ) {
+    this.borrowed = borrowed;
+  }
+
+  isAvailable(): boolean {
+    return !this.borrowed;
+  }
+
+  borrow(): void {
+    if (this.borrowed) {
+      throw new Error("Book is unavailable");
+    }
+
+    this.borrowed = true;
+  }
+
+  return(): void {
+    if (!this.borrowed) {
+      throw new Error("Book is already available");
+    }
+
+    this.borrowed = false;
+  }
+}
+```
+
+**What?** The book represents one physical copy.
+
+**Why?** We need a consistent place to enforce the copy’s availability rule.
+
+**How?** Its state is private, and state changes happen through methods.
+
+**When?** When a concept owns state and has rules governing changes to that state.
+
+**Mental model:** The book controls its own availability. Other objects request changes; they do not freely manipulate its internal state.
+
+### 9.3 Model the Member
+
+```ts
+class Member {
+  constructor(
+    public readonly id: string,
+    public readonly name: string
+  ) {}
+}
+```
+
+This example keeps `Member` small because the current requirements do not require it to own an in-memory collection of loans.
+
+That is intentional.
+
+A class does not need extra properties or methods merely to appear sophisticated.
+
+If we later introduce a maximum active-loan limit, we may need a domain model or policy that can evaluate a member’s current loans.
+
+### 9.4 Model the Loan
+
+```ts
+type LoanStatus = "ACTIVE" | "RETURNED";
+
+class Loan {
+  private status: LoanStatus = "ACTIVE";
+
+  constructor(
+    public readonly id: string,
+    public readonly bookId: string,
+    public readonly memberId: string,
+    public readonly borrowedAt: Date,
+    public readonly dueAt: Date
+  ) {}
+
+  getStatus(): LoanStatus {
+    return this.status;
+  }
+
+  markReturned(): void {
+    if (this.status !== "ACTIVE") {
+      throw new Error("Loan is not active");
+    }
+
+    this.status = "RETURNED";
+  }
+}
+```
+
+**What?** A loan represents one borrowing transaction.
+
+**Why?** Borrowing has its own identity, history, and lifecycle.
+
+**How?** The loan stores transaction-specific information and controls its return transition.
+
+**When?** When an interaction creates something with its own lifecycle or historical significance.
+
+**Mental model:** A loan is not just a connection between a member and a book. It is a record of an event that happened in the domain.
+
+### 9.5 Model the Borrowing Policy
+
+Suppose our library allows members to borrow books for 14 days.
+
+We can model the policy separately:
+
+```ts
+class BorrowingPolicy {
+  calculateDueDate(borrowedAt: Date): Date {
+    const dueAt = new Date(borrowedAt);
+    dueAt.setDate(dueAt.getDate() + 14);
+
+    return dueAt;
+  }
+}
+```
+
+Why not put this directly into `Loan`?
+
+We could.
+
+If the rule is simple and intrinsic to every loan, placing it there may be perfectly reasonable.
+
+But if borrowing periods vary by membership type, book category, or library policy, a separate policy becomes more valuable.
+
+For example:
+
+```ts
+class BorrowingPolicy {
+  calculateDueDate(
+    borrowedAt: Date,
+    membershipType: "STANDARD" | "PREMIUM"
+  ): Date {
+    const days = membershipType === "PREMIUM" ? 30 : 14;
+
+    const dueAt = new Date(borrowedAt);
+    dueAt.setDate(dueAt.getDate() + days);
+
+    return dueAt;
+  }
+}
+```
+
+This demonstrates a key design principle:
+
+**The location of behavior should reflect the ownership and variability of the rule.**
+
+### 9.6 Define Repository Contracts
+
+Our domain objects should not need to know whether data is stored in PostgreSQL, MongoDB, or an in-memory collection.
+
+We can introduce repository contracts:
+
+```ts
+interface BookRepository {
+  findById(id: string): Promise<Book | null>;
+  save(book: Book): Promise<void>;
+}
+
+interface MemberRepository {
+  findById(id: string): Promise<Member | null>;
+}
+
+interface LoanRepository {
+  save(loan: Loan): Promise<void>;
+}
+```
+
+These interfaces describe the operations the application needs.
+
+They do not expose database-specific implementation details.
+
+### 9.7 Coordinate the Use Case
+
+```ts
+interface TransactionManager {
+  execute<T>(operation: () => Promise<T>): Promise<T>;
+}
+
+class BorrowBookService {
+  constructor(
+    private readonly books: BookRepository,
+    private readonly members: MemberRepository,
+    private readonly loans: LoanRepository,
+    private readonly policy: BorrowingPolicy,
+    private readonly transactions: TransactionManager
+  ) {}
+
+  async execute(
+    memberId: string,
+    bookId: string
+  ): Promise<Loan> {
+    return this.transactions.execute(async () => {
+      const member = await this.members.findById(memberId);
+
+      if (!member) {
+        throw new Error("Member not found");
+      }
+
+      const book = await this.books.findById(bookId);
+
+      if (!book) {
+        throw new Error("Book not found");
+      }
+
+      book.borrow();
+
+      const borrowedAt = new Date();
+      const dueAt = this.policy.calculateDueDate(borrowedAt);
+
+      const loan = new Loan(
+        crypto.randomUUID(),
+        book.id,
+        member.id,
+        borrowedAt,
+        dueAt
+      );
+
+      await this.books.save(book);
+      await this.loans.save(loan);
+
+      return loan;
+    });
+  }
+}
+```
+
+Notice the separation:
+
+```text
+BorrowBookService
+    |
+    +---- BookRepository
+    |
+    +---- MemberRepository
+    |
+    +---- LoanRepository
+    |
+    +---- BorrowingPolicy
+    |
+    +---- TransactionManager
+```
+
+The application service coordinates.
+
+The domain objects protect their rules.
+
+The policy encapsulates borrowing-period logic.
+
+Repositories abstract persistence.
+
+The transaction manager provides an atomic execution boundary.
+
+### 9.8 What About Concurrency?
+
+There is still a critical issue.
+
+Imagine two requests attempt to borrow the same book.
+
+```text
+Request A                 Request B
+    |                         |
+    v                         v
+Read book                 Read book
+    |                         |
+    v                         v
+Available                 Available
+    |                         |
+    v                         v
+Borrow                    Borrow
+```
+
+Both requests might read the book as available before either request persists its update.
+
+This is a race condition.
+
+Our in-memory `book.borrow()` method cannot independently guarantee correctness across multiple application processes.
+
+We need database-level concurrency control.
+
+One approach is a conditional update:
+
+```sql
+UPDATE books
+SET borrowed = TRUE
+WHERE id = $1
+AND borrowed = FALSE;
+```
+
+If zero rows are updated, another transaction has already claimed the book or it is unavailable.
+
+The loan must be inserted in the same database transaction.
+
+Conceptually:
+
+```text
+BEGIN
+
+Atomically mark book as borrowed.
+
+  If no row was updated:
+      ROLLBACK
+      Return unavailable error.
+
+Insert loan.
+
+COMMIT
+```
+
+Good object-oriented design does not eliminate database transactions.
+
+It helps us understand where the business rules live and where consistency guarantees must be enforced.
+
+## 10. Common Design Mistakes
+
+Before moving forward, let’s examine some mistakes that frequently appear in LLD implementations.
+
+**Mistake 1: Turning every noun into a class**
+
+A class should represent a meaningful concept, not merely a word from a requirement.
+
+**Mistake 2: Creating an object for every operation**
+
+Not every method needs its own service or class.
+
+An abstraction should provide a meaningful boundary.
+
+**Mistake 3: Treating private fields as complete encapsulation**
+
+A private field is useful, but the real goal is preserving invariants through controlled state transitions.
+
+**Mistake 4: Putting every business rule in a service**
+
+Services coordinate operations, but domain behavior should remain with the appropriate domain objects or domain services.
+
+**Mistake 5: Creating unnecessary interfaces**
+
+Interfaces are valuable when they express meaningful contracts or boundaries.
+
+They are not mandatory for every class.
+
+**Mistake 6: Assuming object-level validation solves concurrency**
+
+An object can protect its own state in memory while multiple concurrent requests still create database-level race conditions.
+
+**Mistake 7: Splitting classes without considering cohesion**
+
+More classes do not automatically mean better design.
+
+The decomposition must reduce conceptual complexity rather than simply move code around.
+
+## 11. A Practical Design Checklist
+
+Before implementing a system, ask:
+
+### Object Discovery
+
+- What are the important domain concepts?
+- Which concepts have independent identity?
+- Which concepts are better represented as value objects?
+- Which concepts have their own lifecycle?
+
+### Responsibility Assignment
+
+- Who owns the required information?
+- Who should execute this behavior?
+- Is this a domain responsibility or application coordination?
+- Does the class have a coherent purpose?
+
+### Encapsulation
+
+- What invariants must always hold?
+- Can external code bypass them?
+- Are state transitions explicitly controlled?
+- Can invalid states be constructed?
+
+### Design Quality
+
+- Are responsibilities cohesive?
+- Are dependencies intentional?
+- Is the design unnecessarily abstract?
+- Are there God Objects?
+
+### System Correctness
+
+- Which operations span multiple objects?
+- Where is the transaction boundary?
+- Can concurrent operations conflict?
+- What guarantees must the database enforce?
+
+## Final Thoughts
+
+Object-Oriented Design is not about creating as many classes as possible.
+
+It is about understanding the domain, discovering meaningful concepts, assigning responsibilities, and protecting the rules that make the system correct.
+
+A good design makes it clear:
+
+- What the important objects represent.
+- What information they own.
+- Which behavior belongs to them.
+- How they collaborate.
+- Which invariants they protect.
+- Where coordination and persistence happen.
+- Which guarantees require database-level enforcement.
+
+The most important lesson is that design decisions should come from the problem domain, not from the desire to use a particular pattern or programming construct.
+
+Start with the requirements.
+
+Understand the business rules.
+
+Discover the concepts.
+
+Assign responsibilities.
+
+Then decide how to implement them.
+
+**We’ll think, we’ll read, we’ll question.**
+
+---
+
+*Written by Keshavvv*
+
+*Learning backend by building it.*

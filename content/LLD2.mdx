@@ -1,0 +1,1391 @@
+---
+title: "LLD from Scratch #02: Understanding Object-Oriented Programming (OOP)"
+description: "Understand OOP from first principles: why objects exist, how procedural programming differs, and how classes, objects, constructors, state, and behavior connect to Low-Level Design."
+author: "Keshavv"
+publishedAt: "2026-11-08"
+readingTime: "19 min"
+tags:
+  - OOP
+  - Software Development
+  - LLD
+  - Backend Development
+---
+
+# LLD from Scratch #02: Understanding Object-Oriented Programming (OOP)
+
+Before we start designing software systems, identifying classes, drawing UML diagrams, or discussing design patterns, there’s one fundamental concept we need to understand deeply.
+
+Object-Oriented Programming (OOP).
+
+You might have already written classes, created objects, used constructors, implemented inheritance, or called methods on different objects. Perhaps you’ve even built applications using TypeScript, Java, Python, or another object-oriented language.
+
+But here’s something worth thinking about:
+
+Have you ever stopped and questioned why we write software this way?
+
+Why do we create objects in the first place? Why do we group data and behavior together? Why can’t we simply write functions that operate on data? What problem does a class actually solve? And more importantly, what makes an object a meaningful concept in software design rather than just another programming construct?
+
+These questions might sound fundamental, but they are closely connected to some of the most important decisions we make when designing software.
+
+Consider a relatively simple application: a college management system.
+
+Initially, the requirements might seem straightforward. We need to maintain student information, manage courses, record attendance, calculate marks, and handle examination registrations.
+
+We could start writing functions for each operation, store information in objects or arrays, and connect everything together.
+
+For a small application, this approach might work perfectly well.
+
+But imagine the application growing.
+
+Now, students have academic records. Courses have enrollment limits. Examination registrations depend on attendance. Scholarships depend on marks and eligibility criteria. Different departments introduce their own rules, and multiple developers begin working on different parts of the application.
+
+Suddenly, a seemingly simple application starts becoming difficult to maintain.
+
+A change in one business rule might affect several functions. Multiple parts of the application might modify the same data. Validation logic might be duplicated across different modules. Understanding which part of the application is responsible for a particular operation becomes increasingly difficult.
+
+This raises an interesting question:
+
+Is the problem that we need more functions, or is the way we’re organizing our software becoming insufficient?
+
+This is where understanding programming paradigms becomes important.
+
+Object-Oriented Programming introduces a different way of thinking about software. Instead of organizing everything primarily around a sequence of operations, we begin identifying the entities involved in a problem, the information they maintain, the responsibilities they have, and the ways they interact with one another.
+
+However, OOP isn’t simply about converting every function into a class or creating objects for everything.
+
+It’s about understanding how to structure a program so that its complexity becomes easier to reason about, its responsibilities become clearer, and its internal rules can be managed more effectively.
+
+And that’s precisely what we need to understand before moving towards Low-Level Design.
+
+In this article, we won’t begin by memorizing the four pillars of OOP or jumping directly into class definitions.
+
+Instead, we’ll approach the subject from first principles.
+
+We’ll start by understanding how programs can be organized without OOP, examine the limitations that can emerge as software grows, and gradually introduce objects, classes, constructors, state, behavior, and the relationships between them.
+
+We’ll also explore why these concepts matter when designing real-world software systems.
+
+By the end, the goal isn’t just to know what a class or an object means.
+
+The goal is to develop the ability to look at a problem, identify meaningful responsibilities, and reason about how its different parts should be structured.
+
+Because before we can design good software, we first need to understand how to think about the software we’re building.
+
+Let’s begin.
+
+## 1. What Is Object-Oriented Programming?
+
+Let’s start with the definition:
+
+Object-Oriented Programming (OOP) is a programming paradigm that organizes software around objects, where each object combines its own data (state) with the operations (behavior) that work on that data.
+
+There are two important ideas hidden inside this definition:
+
+1. Organizing a program around objects.
+2. Keeping related data and behavior together.
+
+But what does that actually mean?
+
+Let’s understand it through a real-world example.
+
+Imagine we’re building a college management application.
+
+Our application needs to manage different things, such as:
+
+- Students
+- Courses
+- Professors
+- Examinations
+- Attendance
+- Marks
+
+Now, let’s focus on just one of them: Student.
+
+Think about a real student. What information would we need to maintain about that student?
+
+For example:
+
+- Name
+- Age
+- Roll number
+- Marks
+- Attendance
+
+This information describes the student.
+
+But a student isn’t just a collection of information. There are also certain actions associated with a student.
+
+For example:
+
+- Attend an examination.
+- View academic records.
+- Calculate average marks.
+- Check examination eligibility.
+
+Now, notice something.
+
+We have information that describes a student, and we also have operations that work with that information.
+
+In OOP, we call the information an object’s **state**, and the operations it can perform its **behavior**.
+
+So, instead of thinking about student information and student-related operations as completely separate things, we can represent them together as a single meaningful entity called an object.
+
+For example, we can think of Asha as a Student object.
+
+Asha has her own name, roll number, marks, and attendance. She can also perform operations such as calculating her average marks or checking her examination eligibility.
+
+This is the basic idea behind Object-Oriented Programming.
+
+We organize our software around objects that maintain their own state and provide behavior related to that state.
+
+But here’s an interesting question:
+
+Why should we keep data and behavior together? Why can’t we simply store student information in variables and write separate functions to perform operations on that information?
+
+After all, we can already do that using regular functions.
+
+And that’s absolutely correct!
+
+We don’t necessarily need OOP to build our application. We can solve the same problem using a different programming approach.
+
+So, why do we need objects in the first place?
+
+To understand that, let’s first explore how we would build our college management application without OOP.
+
+### The mental model
+
+OOP allows us to represent these concepts as objects in our software.
+
+But here’s an important question:
+
+Do we really need OOP to build this application?
+
+No.
+
+We could build the entire application using functions and variables.
+
+So why do we need OOP?
+
+To understand that, let’s first understand another programming paradigm.
+
+## 2. What Is Procedural Programming?
+
+Procedural Programming is a programming paradigm where we organize our programs around procedures (functions) and the sequence of operations required to solve a problem.
+
+Think of a cooking recipe.
+
+1. Take the ingredients.
+2. Heat the pan.
+3. Add oil.
+4. Add vegetables.
+5. Cook everything.
+6. Serve.
+
+You’re following a sequence of instructions.
+
+Procedural programming works similarly.
+
+We write functions that perform specific operations on data.
+
+Let’s take our college application.
+
+Suppose we want to store a student’s information and calculate their average marks.
+
+We can do this:
+
+```ts
+const student = {
+  name: "Asha",
+  marks: [78, 85, 91],
+};
+
+function calculateAverage(student: { name: string; marks: number[] }): number {
+  const total = student.marks.reduce((sum, mark) => sum + mark, 0);
+
+  return total / student.marks.length;
+}
+
+function addMark(
+  student: { name: string; marks: number[] },
+  mark: number,
+): void {
+  student.marks.push(mark);
+}
+
+addMark(student, 88);
+
+console.log(calculateAverage(student));
+```
+
+Let’s understand what’s happening.
+
+First, we created a student object:
+
+```ts
+const student = {
+  name: "Asha",
+  marks: [78, 85, 91],
+};
+```
+
+This object contains the student’s information.
+
+Then we created two functions:
+
+```ts
+function calculateAverage(student) {
+  // calculate average
+}
+
+function addMark(student, mark) {
+  // add a new mark
+}
+```
+
+These functions receive the student object as an argument and perform operations on its data.
+
+Notice that the data and the functions are separate.
+
+The student object doesn’t contain `calculateAverage()` or `addMark()`.
+
+We simply pass the student object to whichever function needs to work with it.
+
+This is a procedural approach.
+
+### Visualizing the procedural approach
+
+```text
+       Student Data
+             |
+             |
+       +-----+-----+
+       |           |
+       v           v
+   addMark()  calculateAverage()
+       |           |
+       +-----+-----+
+             |
+             v
+       Modified Data
+```
+
+The functions operate on the data, but they aren’t structurally grouped with it.
+
+And there’s nothing inherently wrong with this.
+
+Procedural programming is perfectly useful for:
+
+- Small scripts.
+- Simple utilities.
+- Data transformation.
+- Small automation tasks.
+- Programs with straightforward workflows.
+
+The problem starts when our application grows.
+
+This doesn’t mean procedural programming is inherently difficult to maintain. A well-structured procedural application can also be clean and maintainable.
+
+The challenges arise when related data, validation rules, and responsibilities become scattered across the application, making the code harder to understand, modify, and maintain.
+
+Let’s understand why.
+
+## 3. What Problems Can Appear as Procedural Applications Grow?
+
+Let’s continue with our student example.
+
+Initially, we only wanted to calculate average marks.
+
+But now our college application has additional requirements:
+
+1. A mark must be between 0 and 100.
+2. A student cannot have negative attendance.
+3. Students must maintain their own academic records.
+4. Only eligible students can appear for examinations.
+5. We need to generate student reports.
+
+Now we have more functions:
+
+```ts
+addMark();
+removeMark();
+calculateAverage();
+checkAttendance();
+checkExamEligibility();
+generateReport();
+updateStudent();
+```
+
+And every function potentially works with the same student data.
+
+Let’s examine the problems that can appear.
+
+### Problem 1: Anyone can modify the data
+
+Consider this:
+
+```ts
+const student = {
+  name: "Asha",
+  marks: [78, 85, 91],
+};
+```
+
+Now suppose we have a rule:
+
+A student’s marks must always be between 0 and 100.
+
+We write a validation function:
+
+```ts
+function addMark(student, mark) {
+  if (mark < 0 || mark > 100) {
+    throw new Error("Invalid mark");
+  }
+
+  student.marks.push(mark);
+}
+```
+
+Seems fine, right?
+
+But someone can simply do this:
+
+```ts
+student.marks.push(-500);
+```
+
+And the validation is bypassed.
+
+Why?
+
+Because the marks array is directly accessible.
+
+Our rule exists inside `addMark()`, but nothing forces other developers to use that function.
+
+The problem isn’t that our validation is incorrect.
+
+The problem is that our data is not protected by the design.
+
+### Problem 2: Business rules become scattered
+
+Imagine the college has a rule:
+
+"A student must have at least 75% attendance to appear for an examination."
+
+We write:
+
+```ts
+function checkExamEligibility(student) {
+  return student.attendance >= 75;
+}
+```
+
+Now another developer creates an examination registration function.
+
+```ts
+function registerForExam(student) {
+  if (student.attendance >= 75) {
+    console.log("Registered");
+  }
+}
+```
+
+Another developer writes a report generator.
+
+```ts
+function generateReport(student) {
+  if (student.attendance >= 75) {
+    console.log("Eligible for examination");
+  }
+}
+```
+
+We now have the same business rule in three different places.
+
+What happens if the college changes the minimum attendance from 75% to 80%?
+
+We must find and update every place where that rule is implemented.
+
+If we miss one, our application behaves inconsistently.
+
+This is called duplicated business logic.
+
+### Problem 3: Changes can affect multiple parts of the application
+
+Suppose we initially store marks like this:
+
+```ts
+marks: [78, 85, 91];
+```
+
+Later, the college wants to store marks subject-wise.
+
+We change the structure:
+
+```ts
+marks: {
+  mathematics: 78,
+  physics: 85,
+  chemistry: 91
+}
+```
+
+Now every function that accesses `student.marks` might need to change.
+
+Imagine 50 functions across different files.
+
+That’s a lot of places to update.
+
+### Problem 4: Responsibilities become difficult to understand
+
+Suppose your project contains 200 functions.
+
+You find a function named:
+
+```ts
+updateMarks();
+```
+
+But:
+
+- Which entity does it update?
+- What validation does it perform?
+- Is it allowed to modify student marks?
+- Is it also responsible for calculating grades?
+
+As the application grows, understanding where a particular responsibility belongs becomes harder.
+
+### Problem 5: Adding new features becomes increasingly difficult
+
+Suppose the college introduces a new entity called `Scholarship`.
+
+Now the application needs:
+
+- Scholarship eligibility.
+- Scholarship amount calculation.
+- Scholarship application.
+- Scholarship status.
+
+If everything is organized around a large collection of functions, adding new behavior may require modifying many existing functions and condition checks.
+
+This isn’t always inevitable in procedural programming, but poor separation of responsibilities makes it more likely.
+
+### The takeaway
+
+Procedural programming isn’t bad.
+
+But when related data and business rules become spread across a large application, maintaining consistency and understanding the system can become difficult.
+
+This is one of the problems OOP helps us address.
+
+## 4. What Problem Does OOP Solve?
+
+Now let’s return to our original question:
+
+Why do we need OOP?
+
+OOP gives us a way to organize related data and behavior into meaningful units called objects.
+
+Instead of having student data in one place and all student-related operations scattered across the application, we can place the responsibilities associated with a student inside the Student class.
+
+Consider this:
+
+```ts
+class Student {
+  #marks: number[] = [];
+
+  constructor(
+    public name: string,
+    public rollNumber: number,
+  ) {}
+
+  addMark(mark: number): void {
+    if (mark < 0 || mark > 100) {
+      throw new Error("Mark must be between 0 and 100");
+    }
+
+    this.#marks.push(mark);
+  }
+
+  calculateAverage(): number {
+    if (this.#marks.length === 0) {
+      return 0;
+    }
+
+    const total = this.#marks.reduce((sum, mark) => sum + mark, 0);
+
+    return total / this.#marks.length;
+  }
+}
+```
+
+Let’s examine the design.
+
+The `Student` class maintains:
+
+- Student name.
+- Roll number.
+- Marks.
+
+It also provides operations:
+
+- `addMark()`
+- `calculateAverage()`
+
+The validation rule for marks lives alongside the data it protects.
+
+The marks array is private, so external code cannot directly modify it.
+
+Let’s use it:
+
+```ts
+const student = new Student("Asha", 101);
+
+student.addMark(80);
+student.addMark(90);
+
+console.log(student.calculateAverage()); // 85
+
+student.addMark(-500); // Error
+```
+
+Now consider this:
+
+```ts
+student.marks.push(-500);
+```
+
+This won’t work because `marks` is private.
+
+The object controls how its internal marks are modified.
+
+This is an example of encapsulation, which we’ll explore in a future article.
+
+### The central idea
+
+Keep the rules about a piece of data close to the data itself, so other parts of the program cannot accidentally violate those rules.
+
+That’s one of the biggest motivations behind OOP.
+
+## 5. A Little History: Where Did OOP Come From?
+
+OOP wasn’t invented by one person in a single moment.
+
+Its ideas evolved over time.
+
+Simula was originally designed for simulations.
+
+Think about simulating a real-world system containing:
+
+- Ships.
+- Passengers.
+- Queues.
+- Events.
+
+Each entity has its own state and behavior.
+
+Representing these entities as independent objects made the simulation easier to organize.
+
+Later, these ideas became important in general-purpose software development.
+
+Today, many programming languages support OOP:
+
+- Java
+- C++
+- C#
+- Python
+- JavaScript
+- Kotlin
+- Swift
+
+The implementation differs, but the central ideas remain relevant.
+
+## 6. What Are the Benefits of OOP?
+
+Now that we understand the problem, let’s see what OOP gives us in practice.
+
+### 1. Better organization
+
+Related data and behavior live together.
+
+When you open the `Student` class, you can understand much of the logic related to students in one place.
+
+### 2. Controlled access to data
+
+Objects can control how their internal state is modified.
+
+For example, a BankAccount can reject withdrawals that exceed the available balance.
+
+### 3. Reusability
+
+Once we create a well-designed class, we can create multiple objects from it.
+
+We don’t need to rewrite the same structure and behavior for every student.
+
+### 4. Easier testing
+
+We can test an object’s behavior independently.
+
+For example:
+
+- Does `addMark()` reject invalid marks?
+- Does `calculateAverage()` return the correct result?
+- Does `enroll()` reject enrollment when a course is full?
+
+### 5. Better collaboration
+
+Imagine five developers working on a college application.
+
+One works on Student management.
+
+Another works on Course management.
+
+Another works on Examination.
+
+Another works on Payments.
+
+Another works on Notifications.
+
+If responsibilities and interfaces are clearly defined, developers can work on different parts without constantly interfering with each other.
+
+### 6. Easier maintenance
+
+If we change how a class internally stores its data, other parts of the application can remain unaffected as long as its public behavior stays consistent.
+
+This is one of the biggest advantages of good encapsulation.
+
+### One important clarification
+
+OOP does not automatically make software maintainable.
+
+Poorly designed classes can create even more complexity.
+
+OOP is a tool. Good design still requires thoughtful decisions about responsibilities, dependencies, and relationships.
+
+## 7. What Is a Class?
+
+Now we’re ready to understand one of the most important building blocks of OOP.
+
+A class is a blueprint or definition that describes the properties and behaviors of objects.
+
+Let’s use a real-world analogy.
+
+Imagine an architect designing a house.
+
+Before constructing the house, the architect creates a blueprint.
+
+The blueprint describes:
+
+- Number of rooms.
+- Number of doors.
+- Number of windows.
+- Structure of the house.
+
+But here’s something important:
+
+The blueprint itself is not a physical house.
+
+It simply describes how a house should be constructed.
+
+Using the same blueprint, we can build multiple houses.
+
+A class works similarly.
+
+It describes what an object should contain and what it should be able to do.
+
+### Example: Course class
+
+```ts
+class Course {
+  code: string;
+  title: string;
+  seatLimit: number;
+  enrolled: string[];
+
+  constructor(code: string, title: string, seatLimit: number) {
+    this.code = code;
+    this.title = title;
+    this.seatLimit = seatLimit;
+    this.enrolled = [];
+  }
+
+  isFull(): boolean {
+    return this.enrolled.length >= this.seatLimit;
+  }
+
+  enroll(studentName: string): void {
+    if (this.isFull()) {
+      throw new Error("Course is full");
+    }
+
+    this.enrolled.push(studentName);
+  }
+}
+```
+
+Let’s break it down.
+
+### A. Class declaration
+
+```ts
+class Course {}
+```
+
+We are defining a class named `Course`.
+
+At this point, we have only defined a structure.
+
+We haven’t created an actual course object.
+
+### B. Properties
+
+```ts
+code: string;
+title: string;
+seatLimit: number;
+enrolled: string[];
+```
+
+Properties describe the information each Course object will maintain.
+
+For example:
+
+- `code` identifies the course.
+- `title` stores its name.
+- `seatLimit` defines maximum capacity.
+- `enrolled` tracks enrolled students.
+
+These properties represent the state of a Course object.
+
+### C. Methods
+
+```ts
+isFull(): boolean {
+  return this.enrolled.length >= this.seatLimit;
+}
+```
+
+A method is a function defined inside a class.
+
+This method checks whether the course has reached its enrollment limit.
+
+Another method:
+
+```ts
+enroll(studentName: string): void {
+  if (this.isFull()) {
+    throw new Error("Course is full");
+  }
+
+  this.enrolled.push(studentName);
+}
+```
+
+This method enrolls a student if seats are available.
+
+Notice something important.
+
+The Course class doesn’t simply store information.
+
+It also owns the rules governing how that information should be changed.
+
+That’s an important design principle.
+
+### Why not just create functions outside the class?
+
+We could.
+
+But then the course’s enrollment rules might be scattered across multiple functions.
+
+By keeping enrollment behavior inside the Course class, we make the responsibility clearer.
+
+## 8. What Is an Object?
+
+If a class is a blueprint, what is an object?
+
+An object is an individual instance created using a class.
+
+Let’s continue with our Course example.
+
+```ts
+const dbms = new Course("CS301", "Database Management Systems", 2);
+
+const os = new Course("CS302", "Operating Systems", 60);
+```
+
+We’ve created two objects using the same class.
+
+- `dbms`
+- `os`
+
+Both follow the structure defined by `Course`.
+
+But they maintain their own data.
+
+Let’s use them:
+
+```ts
+dbms.enroll("Asha");
+dbms.enroll("Ravi");
+
+console.log(dbms.isFull()); // true
+console.log(os.isFull()); // false
+```
+
+Why is DBMS full while Operating Systems isn’t?
+
+Because each object maintains its own state.
+
+Enrolling students in `dbms` doesn't change the `os` object.
+
+### Visualizing class and objects
+
+```text
+              Course
+         (Class / Blueprint)
+                  |
+          +-------+-------+
+          |               |
+          v               v
+        dbms              os
+       Object           Object
+          |               |
+        CS301            CS302
+        DBMS             OS
+       Limit: 2         Limit: 60
+        Asha           No students
+        Ravi
+```
+
+Both objects use the same class definition, but their data is independent.
+
+### Every object has three important characteristics
+
+Every object can be understood through three important characteristics:
+
+1. **State:** The data or information an object maintains.
+2. **Behavior:** The operations an object can perform.
+3. **Identity:** What makes one object distinct from another, even when their data is identical.
+
+Let’s understand identity.
+
+Suppose we create two courses with exactly the same values:
+
+```ts
+const course1 = new Course("CS301", "DBMS", 60);
+const course2 = new Course("CS301", "DBMS", 60);
+```
+
+Both have identical initial data.
+
+But they are still two different object instances.
+
+```ts
+console.log(course1 === course2); // false
+```
+
+Why?
+
+Because they are two separate objects with separate identities.
+
+This is important when working with object references, relationships, and memory.
+
+Remember: A class is the definition. An object is an actual instance of that definition.
+
+## 9. What Is a Constructor?
+
+Let’s look at our Course class again.
+
+```ts
+class Course {
+  code: string;
+  title: string;
+  seatLimit: number;
+  enrolled: string[];
+
+  constructor(code: string, title: string, seatLimit: number) {
+    this.code = code;
+    this.title = title;
+    this.seatLimit = seatLimit;
+    this.enrolled = [];
+  }
+}
+```
+
+What is this `constructor()`?
+
+A constructor is a special method that runs automatically when a new object is created.
+
+Its main responsibility is to initialize the object’s starting state.
+
+Let’s understand why this is useful.
+
+Imagine we didn’t use a constructor.
+
+We might create an object and initialize its properties manually:
+
+```ts
+const course = new Course();
+
+course.code = "CS301";
+course.title = "DBMS";
+course.seatLimit = 60;
+course.enrolled = [];
+```
+
+This approach has problems.
+
+What if someone forgets to initialize `enrolled`?
+
+What if someone forgets to provide the course title?
+
+What if the seat limit is negative?
+
+We could accidentally create an invalid object.
+
+A constructor allows us to initialize the required information when the object is created.
+
+### Example: Preventing invalid objects
+
+```ts
+class Student {
+  name: string;
+  rollNumber: number;
+
+  constructor(name: string, rollNumber: number) {
+    if (!name.trim()) {
+      throw new Error("Student name is required");
+    }
+
+    if (rollNumber <= 0) {
+      throw new Error("Invalid roll number");
+    }
+
+    this.name = name;
+    this.rollNumber = rollNumber;
+  }
+}
+```
+
+Now:
+
+```ts
+const student1 = new Student("Asha", 101);
+const student2 = new Student("", -1);
+```
+
+The second object cannot be successfully constructed because the constructor throws an error.
+
+This helps ensure that every successfully created Student object begins with valid data.
+
+### Three things to remember about constructors
+
+1. They execute automatically when an object is created using `new`.
+2. They initialize the object’s starting state and can validate input.
+3. They don’t return an object explicitly. The `new` operation creates the object.
+
+### What is `this`?
+
+You’ve probably noticed this keyword everywhere.
+
+```ts
+this.name = name;
+```
+
+What does it mean?
+
+`this` refers to the current object instance.
+
+Consider:
+
+```ts
+const student1 = new Student("Asha", 101);
+const student2 = new Student("Ravi", 102);
+```
+
+When the constructor initializes `student1`, `this` refers to the new Student object being created for Asha.
+
+When it initializes `student2`, `this` refers to the different object being created for Ravi.
+
+So:
+
+```ts
+this.name = name;
+```
+
+means:
+
+"Store the provided name inside the name property of this particular object."
+
+The left side represents the object’s property.
+
+The right side represents the constructor parameter.
+
+## 10. Procedural Programming vs OOP — The Same Problem, Two Approaches
+
+Now let’s put everything together.
+
+Our requirement:
+
+- Maintain a student’s marks.
+- Reject invalid marks.
+- Calculate the average.
+- Prevent invalid data from entering the system.
+
+Let’s implement this in both approaches.
+
+### Approach A: Procedural Programming
+
+```ts
+const student = {
+  name: "Asha",
+  marks: [],
+};
+
+function addMark(student, mark) {
+  if (mark < 0 || mark > 100) {
+    throw new Error("Invalid mark");
+  }
+
+  student.marks.push(mark);
+}
+
+function calculateAverage(student) {
+  if (student.marks.length === 0) {
+    return 0;
+  }
+
+  const total = student.marks.reduce((sum, mark) => sum + mark, 0);
+
+  return total / student.marks.length;
+}
+
+addMark(student, 80);
+addMark(student, 90);
+
+console.log(calculateAverage(student)); // 85
+```
+
+Looks good.
+
+But here’s the problem:
+
+```ts
+student.marks.push(-500);
+```
+
+Nothing prevents this.
+
+We created a validation rule, but someone can bypass it.
+
+### Approach B: Object-Oriented Programming
+
+```ts
+class Student {
+  #marks: number[] = [];
+
+  constructor(public name: string) {}
+
+  addMark(mark: number): void {
+    if (mark < 0 || mark > 100) {
+      throw new Error("Invalid mark");
+    }
+
+    this.#marks.push(mark);
+  }
+
+  calculateAverage(): number {
+    if (this.#marks.length === 0) {
+      return 0;
+    }
+
+    const total = this.#marks.reduce((sum, mark) => sum + mark, 0);
+
+    return total / this.#marks.length;
+  }
+}
+```
+
+Usage:
+
+```ts
+const student = new Student("Asha");
+
+student.addMark(80);
+student.addMark(90);
+
+console.log(student.calculateAverage()); // 85
+
+student.#marks.push(-500); // SyntaxError
+```
+
+Now the internal marks array cannot be accessed directly.
+
+The only way to add marks through the public interface is by calling `addMark()`.
+
+This means our validation rule is enforced by the object.
+
+### Side-by-side comparison
+
+| Procedural Programming                                 | Object-Oriented Programming                 |
+| ------------------------------------------------------ | ------------------------------------------- |
+| Organizes code around functions and procedures         | Organizes code around objects               |
+| Data and operations are often separate                 | Related state and behavior are grouped      |
+| Functions receive data as arguments                    | Methods operate on an object's state        |
+| Data may be directly accessible                        | Encapsulation can control access            |
+| Responsibilities depend on how functions are organized | Responsibilities can be assigned to objects |
+
+One important clarification: Procedural programming can also be structured and maintainable. OOP is not automatically superior. The right approach depends on the problem.
+
+## 11. How Does All of This Connect to Low-Level Design?
+
+This is where things become interesting.
+
+So far, we’ve learned:
+
+- What OOP is.
+- What procedural programming is.
+- Why OOP is useful.
+- What classes are.
+- What objects are.
+- What constructors do.
+
+But why are we learning all this in an LLD series?
+
+Because Low-Level Design is about designing the internal structure of software.
+
+Before writing an implementation, we need to decide:
+
+1. What classes should exist?
+2. What responsibilities should each class have?
+3. What data should each class maintain?
+4. What methods should each class expose?
+5. How should objects interact?
+6. What relationships exist between classes?
+
+Let’s take a library management system.
+
+Requirements:
+
+- A member can search for books.
+- A member can borrow books.
+- A member can return books.
+- A member can borrow a maximum of three books.
+- A member must pay a fine for late returns.
+
+Before writing code, we identify the entities:
+
+```text
+Member
+Book
+Loan
+Library
+Fine
+```
+
+Then we think about responsibilities.
+
+For example:
+
+- `Member` maintains member information.
+- `Book` represents a book and its relevant information.
+- `Loan` represents the borrowing relationship and its dates.
+- `Library` coordinates library operations.
+- `Fine` represents a penalty associated with a late return.
+
+Then we identify relationships.
+
+For example:
+
+- A Member has multiple Loans.
+- A Loan refers to a Book.
+- A Library manages Books and Members.
+
+We can represent these relationships using UML class diagrams.
+
+This is exactly why understanding objects and responsibilities is important before learning LLD.
+
+LLD isn’t about writing classes randomly. It’s about deciding which objects should exist and how they should collaborate to satisfy the requirements.
+
+## 12. Common Beginner Misconceptions
+
+Before wrapping up, let’s clear up a few common misunderstandings.
+
+> **Misconception 1: OOP means everything must be a class.**
+
+No.
+
+A small utility function doesn’t necessarily need a class.
+
+You can use standalone functions where they make more sense.
+
+Good design is about choosing the right abstraction, not maximizing the number of classes.
+
+> **Misconception 2: A class and an object are the same.**
+
+No.
+
+A class describes a structure.
+
+An object is an instance created from that structure.
+
+One class can produce many objects.
+
+> **Misconception 3: Every method must modify object state.**
+
+No.
+
+Some methods simply read or calculate information.
+
+For example:
+
+```ts
+isFull(): boolean {
+  return this.enrolled.length >= this.seatLimit;
+}
+```
+
+This method reads the object’s state but doesn’t modify it.
+
+### Misconception 4: OOP automatically protects data.
+
+No.
+
+You must use access control, encapsulation, and appropriate interfaces to protect internal state.
+
+Simply creating a class doesn’t make all its properties private.
+
+> **Misconception 5: OOP is always better than procedural programming.**
+
+No.
+
+OOP is useful when organizing objects and their responsibilities helps manage complexity.
+
+For a simple script that converts Celsius to Fahrenheit, a function is probably enough.
+
+Don’t introduce unnecessary classes.
+
+## 13. Let’s Test Our Understanding
+
+Don’t just memorize the definitions. Think about the scenarios.
+
+### Question 1
+
+You’re building a banking application.
+
+A bank account has:
+
+- Account number.
+- Balance.
+- Deposit operation.
+- Withdrawal operation.
+
+Which approach better groups the account’s data and related operations?
+
+Think before revealing the answer.
+
+**Answer:**
+
+An object-oriented approach is a natural fit.
+
+A `BankAccount` object can maintain its balance and provide methods such as `deposit()` and `withdraw()`.
+
+This also gives us a place to enforce rules, such as preventing withdrawals beyond the available balance.
+
+### Question 2
+
+You have two objects:
+
+```ts
+const course1 = new Course("CS101", "DBMS", 60);
+const course2 = new Course("CS101", "DBMS", 60);
+```
+
+Both have exactly the same values.
+
+Are they the same object?
+
+**Answer:**
+
+No.
+
+They are two separate object instances.
+
+They have the same initial state, but different identities.
+
+### Question 3
+
+Why shouldn’t we expose a BankAccount’s balance for unrestricted modification?
+
+**Answer:**
+
+Because external code could assign invalid values directly.
+
+For example:
+
+```ts
+account.balance = -100000;
+```
+
+A better design controls balance modifications through operations such as `deposit()` and `withdraw()`.
+
+Those operations can enforce business rules.
+
+### Question 4
+
+Does creating a class automatically make an application object-oriented in terms of good design?
+
+**Answer:**
+
+No.
+
+Good OOP requires meaningful responsibilities, appropriate encapsulation, and well-designed interactions between objects.
+
+A class that simply collects unrelated variables and methods isn’t necessarily a good abstraction.
+
+## 14. Final Thoughts
+
+When I first started learning OOP, I used to think it was simply about creating classes and objects.
+
+But there’s much more to it.
+
+The real idea is to organize software around meaningful entities, their state, behavior, and responsibilities.
+
+Instead of scattering every operation across the application, we create objects that manage the information and rules associated with them.
+
+Here’s what I want you to remember:
+
+- **OOP:** Organize software around objects.
+- **Class:** A definition or blueprint describing an object.
+- **Object:** An individual instance of a class.
+- **State:** The information an object maintains.
+- **Behavior:** The operations an object performs.
+- **Constructor:** Initializes an object’s starting state.
+- **`this`:** Refers to the current object instance.
+
+And most importantly:
+
+Don’t learn OOP just to write classes. Learn it to understand how to divide a complex problem into smaller, meaningful responsibilities.
+
+That’s the foundation of Low-Level Design.
+
+## What’s Next?
+
+In the next article, we’ll explore the four fundamental building blocks of OOP:
+
+1. Encapsulation
+2. Abstraction
+3. Inheritance
+4. Polymorphism
+
+We’ll understand why they exist, what problems they solve, and how they work internally through practical examples.
+
+Until then:
+
+**We’ll think, we’ll read, we’ll question.**
+
+---
+
+_Written by Keshavvv_
+
+_Learning backend by building it._

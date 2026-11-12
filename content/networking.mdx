@@ -1,0 +1,2202 @@
+---
+title: "Networking From First Principles: What Actually Happens When You Open a Website?"
+description: "A deep, practical guide to IP addresses, DNS, client-server architecture, HTTP, HTTPS, statelessness, cookies, latency, throughput, and bandwidth — with real-world failure scenarios and system design questions."
+author: "Keshavv"
+publishedAt: "2026-10-17"
+tags:
+  - System Design
+  - Networking
+  - IP
+  - DNS
+readingTime: "40 min"
+---
+
+# Networking From First Principles: What Actually Happens When You Open a Website?
+
+Imagine you build a backend using TypeScript and Express.
+
+You start your server:
+
+```bash
+bun run dev
+```
+
+Your terminal says the server is listening on port `3000`.
+
+You open your browser and visit:
+
+```text
+http://localhost:3000/api/users
+```
+
+The request works.
+
+Now you deploy the same application to a server somewhere in the world. Your friend opens the application from another city, and it works again.
+
+But how?
+
+Your friend's computer doesn't have direct access to your application's memory. It doesn't know which function Express will execute. It doesn't know which database you use. It doesn't even know where your server physically lives.
+
+All it has is a request it wants to send somewhere.
+
+The network provides the mechanisms that allow computers to locate one another, exchange data, and interpret what they receive.
+
+To understand backend engineering, you need to understand those mechanisms.
+
+Let's begin with one fundamental question.
+
+**What does it actually mean for two computers to communicate?**
+
+At the lowest practical level, one computer must represent information as data, transmit that data through a communication medium, and have another computer receive and interpret it.
+
+But transmission alone is insufficient.
+
+Both computers need conventions for interpreting addresses, organizing data, detecting certain errors, and deciding what the received information means.
+
+Those conventions are called protocols.
+
+For example:
+
+- IP helps deliver packets across networks.
+- TCP provides an ordered, reliable byte stream between endpoints.
+- DNS helps translate domain names into records such as IP addresses.
+- HTTP defines how clients and servers exchange application requests and responses.
+- TLS provides cryptographic protection for communication.
+
+Each solves a different problem.
+
+The mistake beginners make is treating these as interchangeable technologies. They are different pieces of a larger communication process.
+
+Our objective is to understand why each piece exists.
+
+## 1. What Is System Design?
+
+System design is the process of deciding how the components of a software system communicate, exchange data, allocate resources, and behave under normal and failure conditions.
+
+Consider a simple requirement:
+
+> A user should be able to log in and see their profile.
+
+That sounds like one feature. But the complete operation involves multiple decisions:
+
+- How does the browser locate the backend?
+- How does it establish communication?
+- How is the request represented?
+- How does the backend identify the user?
+- How does it return the response?
+- What happens when the network fails?
+- How long should the operation take?
+- What happens when thousands of users make the same request?
+
+These questions belong to different areas of engineering, but they combine into one system.
+
+### 1.1 System design begins with constraints
+
+Suppose your API takes 100 milliseconds to respond when you test it locally.
+
+After deployment, it takes 800 milliseconds.
+
+You could immediately try rewriting your application. But the application code might not be the problem.
+
+The extra delay could come from:
+
+- Network distance between the user and server.
+- DNS resolution.
+- Connection establishment.
+- TLS negotiation.
+- Network congestion.
+- Waiting for the server to process the request.
+- A slow response transfer.
+
+The correct response is to identify the source of the delay before changing the system.
+
+This is the first principle of engineering:
+
+**Understand the constraint before choosing the solution.**
+
+System design is largely the process of identifying constraints, understanding their consequences, and making deliberate trade-offs.
+
+### 1.2 Three fundamental constraints
+
+**Time**
+
+How long does it take for data to travel, for a request to be processed, and for a response to arrive?
+
+This leads us to latency.
+
+**Capacity**
+
+How much data can the network carry? How many requests can the server process? How much traffic can a connection handle?
+
+This leads us to bandwidth and throughput.
+
+**Failure**
+
+What happens when packets are lost, a connection breaks, a DNS server becomes unavailable, or a remote server never responds?
+
+This leads us to timeouts, retries, error handling, and fault tolerance.
+
+Keep these three constraints in mind. They will help you reason about every concept that follows.
+
+## 2. IP Addresses: How Computers Locate Network Destinations
+
+### 2.1 Why do we need addresses?
+
+Imagine sending a letter to a friend.
+
+You write the message, but you also need to specify where the letter should go.
+
+Without a destination address, the postal system has no way to determine where to deliver it.
+
+Network communication has the same fundamental requirement.
+
+When one computer sends data to another computer, the network needs addressing information to help deliver it to the intended destination.
+
+An IP address is a logical network-layer address used by the Internet Protocol.
+
+There are two major versions:
+
+- IPv4, such as `192.0.2.10`.
+- IPv6, such as `2001:db8::10`.
+
+These example addresses come from documentation ranges reserved for examples, rather than identifying real production servers.
+
+### 2.2 IPv4 and IPv6
+
+IPv4 uses 32-bit addresses.
+
+Each bit can be either zero or one. Therefore, the total number of possible bit combinations is:
+
+\[
+$$
+2^{32} = 4,294,967,296
+$$
+\]
+
+That's approximately 4.3 billion possible IPv4 addresses.
+
+An IPv4 address is usually written as four decimal numbers separated by dots:
+
+```text
+192.168.1.10
+```
+
+Each number represents eight bits, also called one byte.
+
+For example:
+
+```text
+192       . 168       . 1         . 10
+11000000  . 10101000  . 00000001  . 00001010
+```
+
+Four bytes multiplied by eight bits gives 32 bits.
+
+IPv6 uses 128-bit addresses.
+
+That is an enormously larger address space.
+
+IPv6 was introduced partly because the number of devices and services connected to the Internet outgrew the practical availability of public IPv4 addresses.
+
+An IPv6 address might look like:
+
+```text
+2001:db8:85a3::8a2e:370:7334
+```
+
+The `::` notation compresses consecutive groups of zeros.
+
+**First-principles takeaway:** IP addresses are not domain names, usernames, or physical coordinates. They are logical addresses used by the network layer to identify destinations.
+
+### 2.3 Does every device have a public IP address?
+
+No.
+
+This distinction matters when designing and debugging systems.
+
+Consider your home network:
+
+```text
+                  Internet
+                      |
+               Public IP address
+                      |
+                  Home router
+                  /          \
+              Laptop          Phone
+           192.168.1.10    192.168.1.11
+```
+
+Your laptop and phone may have private IPv4 addresses.
+
+Private IPv4 ranges include:
+
+- `10.0.0.0/8`
+- `172.16.0.0/12`
+- `192.168.0.0/16`
+
+These addresses are intended for private networks and are not globally routed across the public Internet.
+
+Your router may have a public IPv4 address assigned by your internet service provider.
+
+When your laptop accesses a website, the router often uses Network Address Translation (NAT) to translate the laptop's private address and connection information into a form that can be used on the public network.
+
+In some networks, the internet service provider also performs carrier-grade NAT, meaning multiple customers can share public IPv4 infrastructure.
+
+IPv6 can provide globally routable addresses to devices, although firewalls and other network policies still control which connections are permitted.
+
+### 2.4 What is a subnet?
+
+Imagine a company has hundreds of computers.
+
+It would be inefficient to treat every computer as completely unrelated to every other computer. Networks are divided into address ranges called subnets.
+
+A subnet describes which portion of an IP address represents the network prefix and which portion identifies an address within that range.
+
+Consider:
+
+```text
+192.168.1.10/24
+```
+
+The `/24` means the first 24 bits form the network prefix.
+
+For this IPv4 subnet:
+
+```text
+Network:       192.168.1.0/24
+Typical hosts: 192.168.1.1 through 192.168.1.254
+Broadcast:     192.168.1.255
+```
+
+The exact addresses available to hosts depend on the subnet and network configuration. In this traditional `/24` example, `.0` is the network address and `.255` is the broadcast address.
+
+A subnet mask expresses the same boundary:
+
+```text
+255.255.255.0
+```
+
+Why does this matter?
+
+Because a computer needs to determine whether the destination is on its local network or must be reached through a router.
+
+If the destination is local, the computer can send the traffic directly over the local network.
+
+If the destination is remote, the computer generally sends the packet to a configured gateway.
+
+### 2.5 What actually happens when an IP packet is sent?
+
+Suppose your computer wants to communicate with a remote server.
+
+A simplified flow looks like this:
+
+1. The application creates data to send.
+2. A transport protocol such as TCP or UDP handles transport-level concerns.
+3. IP adds information such as source and destination IP addresses.
+4. The data is placed into a link-layer frame appropriate for the local network.
+5. The frame travels over Wi-Fi, Ethernet, or another link.
+6. Routers examine the destination IP and forward the packet toward its destination.
+7. The receiving computer processes the packet through its networking stack.
+
+The details depend on the protocols involved, but the core idea is that different layers add and interpret different kinds of information.
+
+A router does not need to understand your application's Express route. It needs enough network information to forward the packet.
+
+### 2.6 What if the server's IP address changes?
+
+Suppose your backend is available at:
+
+```text
+203.0.113.20
+```
+
+Tomorrow, your hosting provider moves the service to another machine with a different address.
+
+If every user had hardcoded the old IP address into their application, those applications might stop reaching the service.
+
+This is one reason domain names are useful.
+
+Instead of asking users to remember a server's IP address, you can provide:
+
+```text
+api.example.com
+```
+
+DNS can resolve that domain to an appropriate address.
+
+However, DNS changes are not always reflected everywhere immediately. Cached DNS records and application-level connection reuse can delay the transition.
+
+We'll examine this shortly.
+
+### 2.7 What if the IP address is reachable but the application does not respond?
+
+An IP address identifies a network destination, but it does not guarantee that a particular application is available.
+
+For example:
+
+```text
+Server IP: 203.0.113.20
+Port:      3000
+```
+
+The machine might be reachable, but:
+
+- The application may not be running.
+- Nothing may be listening on port `3000`.
+- A firewall may block the connection.
+- The server may be overloaded.
+- The service may accept connections but never finish responding.
+
+This gives us an important distinction:
+
+**Network reachability is not the same as application availability.**
+
+A successful ping does not prove that your HTTP API works. Likewise, a failed ping does not necessarily mean that your HTTP API is down; firewalls may block ICMP traffic while allowing HTTPS.
+
+## 3. DNS: How Domain Names Become Network Destinations
+
+### 3.1 Why does DNS exist?
+
+You could theoretically access a website by typing its IP address.
+
+But memorizing addresses like these would be inconvenient:
+
+```text
+142.250.183.14
+```
+
+People prefer names:
+
+```text
+example.com
+```
+
+Computers still need network information to establish a connection. DNS, the Domain Name System, provides a distributed naming system that can return records associated with a domain name.
+
+A simple analogy is a contact list.
+
+You remember someone's name. Your phone looks up their number.
+
+Similarly, you remember a domain name. Your computer obtains DNS information that can help it connect to the appropriate service.
+
+DNS is more than a simple global phonebook, though. It is a distributed hierarchy with caching and several record types.
+
+### 3.2 How is DNS organized?
+
+Consider this domain:
+
+```text
+api.example.com
+```
+
+Domain names are organized into levels:
+
+```text
+.                 Root
+└── com           Top-level domain
+    └── example   Domain
+        └── api   Subdomain
+```
+
+When a resolver needs an answer it does not already have cached, it can follow the DNS hierarchy to discover which servers are authoritative for the relevant name.
+
+The main components are:
+
+- **Stub resolver:** The DNS client behavior on your device.
+- **Recursive resolver:** A service that looks up answers on behalf of clients and caches results.
+- **Root nameservers:** Provide referrals toward the appropriate top-level domain servers.
+- **TLD nameservers:** Help identify authoritative servers for domains under a top-level domain.
+- **Authoritative nameservers:** Publish DNS records for a domain.
+
+Your operating system or network may use a recursive resolver operated by an internet provider, a public DNS provider, an organization, or another service.
+
+### 3.3 What happens when you type a domain name?
+
+Imagine you open:
+
+```text
+https://api.example.com/users
+```
+
+Your computer needs to determine which IP address or addresses are associated with `api.example.com`.
+
+A simplified resolution process is:
+
+```text
+Browser / Application
+         |
+         v
+Local DNS cache and system resolver
+         |
+         v
+Recursive DNS resolver
+         |
+         v
+Root nameserver
+         |
+         v
+.com TLD nameserver
+         |
+         v
+Authoritative nameserver for example.com
+         |
+         v
+DNS answer for api.example.com
+         |
+         v
+Client connects to the destination
+```
+
+This diagram describes a possible cache-miss path, not what must happen for every request.
+
+If a valid cached answer already exists, some or all of the lookup steps can be skipped.
+
+Also, the browser may use its own DNS cache or a DNS-over-HTTPS resolver, depending on its configuration.
+
+#### A simplified example
+
+Suppose the authoritative DNS configuration contains an A record:
+
+```text
+api.example.com → 203.0.113.20
+```
+
+An A record maps a hostname to an IPv4 address.
+
+An AAAA record provides an IPv6 address.
+
+A DNS resolver returns the appropriate records, and the client can then attempt to establish a connection.
+
+The DNS result does not guarantee that the destination is currently healthy. It only supplies naming information.
+
+### 3.4 Why is DNS distributed?
+
+Imagine one central server handled every DNS lookup on the planet.
+
+What would happen?
+
+- It would receive an enormous volume of requests.
+- Its failure could disrupt a large portion of name resolution.
+- Every client would depend on the availability of one service.
+- Global latency would be difficult to control.
+
+DNS uses a distributed hierarchy, delegation, replication, and caching to avoid depending on one universal server for every lookup.
+
+Different domains can be managed by different authoritative providers.
+
+The owner of `example.com` can configure its own DNS records without having to manually update one global database for every hostname.
+
+### 3.5 What is DNS caching?
+
+Suppose your computer looks up:
+
+```text
+api.example.com
+```
+
+and receives:
+
+```text
+203.0.113.20
+```
+
+The DNS response includes a time-to-live value, or TTL, which tells caches how long the record may be cached.
+
+For example:
+
+```text
+Record: api.example.com
+Type:   A
+Value:  203.0.113.20
+TTL:    300 seconds
+```
+
+A cache may retain the record for up to five minutes, subject to DNS rules and implementation behavior.
+
+If you visit the same domain again before the cached entry expires, your system may not need a new recursive lookup.
+
+This reduces lookup traffic and often improves response time.
+
+But caching creates a trade-off.
+
+Caching improves efficiency, but it delays how quickly changes become visible.
+
+Suppose you change the record to:
+
+```text
+api.example.com → 203.0.113.21
+```
+
+Some clients may continue using a previously cached answer until it expires.
+
+The behavior also depends on when the previous record was cached and the TTL it carried.
+
+### 3.6 What if DNS is down?
+
+Let's reason carefully.
+
+Your browser has a cached DNS answer for a website.
+
+The recursive resolver then becomes unavailable.
+
+Will the website immediately stop working?
+
+Not necessarily.
+
+If the browser, operating system, or another relevant cache has a usable address and an existing connection, the website may continue working.
+
+But if the client needs a fresh lookup and cannot obtain an answer, it may fail before it can connect to the server.
+
+This is why a DNS failure can look like an application outage even when the backend is healthy.
+
+The backend might be running perfectly. The client simply cannot resolve its name.
+
+#### Failure scenario: DNS points to the wrong address
+
+Suppose you deploy a new backend, but DNS still points to the old server.
+
+The domain resolves successfully. The network connection may even succeed.
+
+Yet users receive an outdated response or a connection error.
+
+Notice the subtlety: successful DNS resolution does not prove that DNS points to the correct server.
+
+#### Failure scenario: DNS propagation
+
+People often say, "DNS propagation takes 24–48 hours."
+
+That phrase is an oversimplification.
+
+After a DNS change, different caches may retain previous answers for different amounts of time. TTLs, resolver behavior, delegation changes, and negative caching all influence when clients observe the new state.
+
+Changing a record does not magically invalidate every existing cache across the Internet.
+
+### 3.7 Common DNS record types
+
+Some common record types include:
+
+| Record | Purpose |
+|---|---|
+| A | Maps a hostname to an IPv4 address |
+| AAAA | Maps a hostname to an IPv6 address |
+| CNAME | Creates an alias to another domain name |
+| MX | Specifies mail exchange servers |
+| TXT | Stores text information, often used for verification and email security |
+| NS | Identifies authoritative nameservers |
+
+### 3.8 Try it yourself
+
+On Windows PowerShell:
+
+```powershell
+nslookup example.com
+```
+
+Or:
+
+```powershell
+nslookup api.github.com
+```
+
+On systems with `dig` installed:
+
+```bash
+dig example.com
+dig example.com A
+dig example.com AAAA
+```
+
+Observe the answers, record types, and TTLs where available.
+
+Ask yourself:
+
+1. Does every query produce the same answer?
+2. What happens when a domain has multiple IP addresses?
+3. Why might two clients receive different valid answers?
+4. What would happen if a cached answer points to an old server?
+
+## 4. Client–Server Architecture: Who Asks, and Who Answers?
+
+### 4.1 The basic idea
+
+Imagine opening a social media application.
+
+Your browser wants your profile information.
+
+The browser sends a request. A backend receives it, performs the required work, and sends back a response.
+
+This is the fundamental client–server model.
+
+```text
++-------------------+           +-------------------+
+|                   |  Request  |                   |
+| Client            | --------> | Server            |
+| Browser / App     | <-------- | Backend API       |
+|                   |  Response |                   |
++-------------------+           +-------------------+
+```
+
+The client initiates a request in the usual HTTP interaction. The server processes it and returns a response.
+
+A client can be a browser, mobile application, command-line tool, or another server.
+
+A server is a program or service that handles requests. It does not have to be one enormous physical computer.
+
+### 4.2 What does a server actually mean?
+
+Suppose you write:
+
+```ts
+import express from "express";
+
+const app = express();
+
+app.get("/api/users", (req, res) => {
+  res.json([
+    { id: 1, name: "Asha" },
+    { id: 2, name: "Rahul" },
+  ]);
+});
+
+app.listen(3000, () => {
+  console.log("Server listening on port 3000");
+});
+```
+
+When the process starts, your application asks the operating system to listen for network connections on a configured port and address.
+
+The operating system's networking stack receives incoming traffic and delivers it to the appropriate socket when the traffic matches the socket's addressing and protocol.
+
+Express then handles HTTP requests passed to the application.
+
+There are several distinct pieces here:
+
+- Your Node.js or Bun process executes JavaScript or TypeScript.
+- The operating system manages sockets and network resources.
+- TCP or another transport protocol carries data.
+- IP handles network-layer addressing.
+- Express routes HTTP requests.
+
+They cooperate, but they are not the same component.
+
+### 4.3 What is a port?
+
+An IP address helps identify a network destination. A port helps identify the relevant transport endpoint on that machine.
+
+Imagine a large office building.
+
+The street address gets you to the building. The room number helps you reach the correct office.
+
+An IP address is somewhat like the building address, while a port is somewhat like the room number.
+
+For TCP and UDP, port numbers range from 0 to 65,535.
+
+Common examples include:
+
+- `80`: Commonly used for HTTP.
+- `443`: Commonly used for HTTPS.
+- `3000`: Often used by development servers.
+- `5432`: Commonly used by PostgreSQL.
+
+These are conventions, not guarantees. An application can use a different port if its configuration and network allow it.
+
+When you visit:
+
+```text
+http://localhost:3000/api/users
+```
+
+The URL identifies:
+
+```text
+Host: localhost
+Port: 3000
+Path: /api/users
+```
+
+`localhost` normally refers to the local machine through loopback networking. It does not mean "the remote server where my application is deployed."
+
+That distinction causes many beginner mistakes.
+
+### 4.4 Why does localhost work without DNS?
+
+Because `localhost` is a special hostname with local resolution behavior.
+
+It normally resolves to loopback addresses, such as:
+
+```text
+127.0.0.1
+::1
+```
+
+Traffic sent to a loopback address stays within the local networking stack rather than travelling out to the Internet.
+
+That is why a development server listening on your machine can be reached through `localhost`.
+
+But if your friend types `localhost:3000`, they reach their own machine, not yours.
+
+Your computer's `localhost` and your friend's `localhost` refer to different computers.
+
+### 4.5 What happens if you use the wrong port?
+
+Suppose your server listens on:
+
+```text
+localhost:3000
+```
+
+But you visit:
+
+```text
+localhost:4000
+```
+
+Your browser attempts to connect to a different transport endpoint.
+
+If nothing is listening there, the connection will typically be refused.
+
+If another service is listening there, you might reach the wrong application instead.
+
+This is an example of a failure that has nothing to do with DNS or the correctness of your Express route.
+
+### 4.6 TCP: Establishing a reliable connection
+
+HTTP/1.1 and HTTP/2 commonly use TCP as their transport protocol. HTTP/3 uses QUIC, which is built on UDP.
+
+Let's first understand TCP.
+
+Applications need a way to exchange data over a network. But packets can be lost, arrive out of order, or be duplicated.
+
+TCP provides a reliable, ordered byte stream between communicating endpoints.
+
+It uses sequence numbers, acknowledgments, retransmission, and flow and congestion control mechanisms to achieve this.
+
+Before sending application data over a new TCP connection, the endpoints normally perform a three-way handshake.
+
+```text
+Client                          Server
+  |                                |
+  | -------- SYN ----------------> |
+  |                                |
+  | <------ SYN + ACK ------------ |
+  |                                |
+  | -------- ACK ----------------> |
+  |                                |
+  |       Connection ready         |
+```
+
+The handshake synchronizes connection state between the endpoints.
+
+It does not mean that every possible network problem has been solved. Packets can still be lost later, connections can break, and the application can fail.
+
+#### Why does this matter for latency?
+
+A new TCP connection requires network round trips before application data can flow normally.
+
+If a client repeatedly opens new connections instead of reusing existing ones, it can add unnecessary delay and connection overhead.
+
+Connection reuse is one reason persistent HTTP connections are useful.
+
+### 4.7 What is a socket?
+
+A socket is an operating-system interface through which a program can communicate over a network.
+
+For TCP, a connection is associated with endpoint information that includes source and destination IP addresses and port numbers.
+
+For example:
+
+```text
+Client: 192.168.1.10:52000
+Server: 203.0.113.20:443
+```
+
+These are illustrative addresses.
+
+The client's port `52000` is an example of an ephemeral port selected for the connection. The server is listening on port `443`.
+
+A single server can support many concurrent connections because those connections have distinct endpoint combinations.
+
+The server does not need one unique public IP address per user.
+
+### 4.8 What if the server is running but users cannot connect?
+
+Work through the path instead of immediately blaming the application code.
+
+1. Is the domain resolving to the intended address?
+2. Is the destination IP reachable through the relevant network path?
+3. Is the service listening on the expected address and port?
+4. Do firewalls or security groups permit the connection?
+5. Is the service accepting connections?
+6. Does the application finish processing the request?
+
+Each question investigates a different failure boundary.
+
+A process can be alive while the service is inaccessible from outside its own machine.
+
+For example, a server that listens only on `127.0.0.1` may accept local connections but reject connections arriving through the machine's external interface.
+
+**Engineering lesson:** "The server is running" and "the service is reachable by clients" are two different claims.
+
+## 5. HTTP: How Clients and Servers Understand Each Other
+
+### 5.1 A connection alone is not enough
+
+Suppose two computers establish a TCP connection.
+
+One computer sends these bytes:
+
+```text
+hello
+```
+
+What should the other computer do with them?
+
+Should it display text? Parse JSON? Authenticate a user? Return a file? Execute a command?
+
+The transport connection does not define those application-level meanings.
+
+Applications need a protocol that describes the structure and meaning of their messages.
+
+HTTP, the Hypertext Transfer Protocol, provides rules for request and response messages.
+
+It is widely used by browsers, APIs, reverse proxies, and other web infrastructure.
+
+### 5.2 What does an HTTP request look like?
+
+Consider this request:
+
+```http
+GET /api/users HTTP/1.1
+Host: api.example.com
+Accept: application/json
+```
+
+Conceptually, it contains:
+
+- A method: `GET`
+- A path: `/api/users`
+- A protocol version: `HTTP/1.1`
+- Headers that provide additional information
+
+A request can also include a body, depending on the method and application design.
+
+For example:
+
+```http
+POST /api/users HTTP/1.1
+Host: api.example.com
+Content-Type: application/json
+
+{"name":"Asha"}
+```
+
+This request asks the server to process a request to create a user, assuming that is what the API defines for this endpoint.
+
+HTTP specifies the message format and semantics, but your backend defines the business behavior.
+
+### 5.3 What does an HTTP response look like?
+
+The server might return:
+
+```http
+HTTP/1.1 201 Created
+Content-Type: application/json
+
+{"id":123,"name":"Asha"}
+```
+
+The response contains a status code, headers, and potentially a body.
+
+The status code communicates the general result of the request.
+
+Some common examples:
+
+| Status | Meaning |
+|---|---|
+| 200 | OK |
+| 201 | Created |
+| 204 | No Content |
+| 400 | Bad Request |
+| 401 | Unauthorized |
+| 403 | Forbidden |
+| 404 | Not Found |
+| 429 | Too Many Requests |
+| 500 | Internal Server Error |
+| 502 | Bad Gateway |
+| 503 | Service Unavailable |
+| 504 | Gateway Timeout |
+
+A status code alone does not always tell you the precise cause. Logs, response bodies, tracing, and infrastructure metrics may be needed.
+
+### 5.4 How does HTTP relate to Express?
+
+Look at this handler:
+
+```ts
+app.get("/api/users", (req, res) => {
+  res.status(200).json({
+    users: [],
+  });
+});
+```
+
+The browser sends an HTTP request.
+
+The operating system and runtime receive the network data.
+
+The HTTP server parses the request.
+
+Express matches the method and route, executes the handler, and generates a response.
+
+The runtime then sends the response bytes over the network.
+
+Express does not magically make the network reliable. It operates at the application layer on top of the networking facilities provided by the runtime and operating system.
+
+### 5.5 What if the HTTP route exists but the request still fails?
+
+Suppose this works locally:
+
+```http
+GET http://localhost:3000/api/users
+```
+
+But production returns `404`.
+
+Possible explanations include:
+
+- The production route is different.
+- The request is reaching another service.
+- A reverse proxy is rewriting the path.
+- The application version deployed to production is outdated.
+- The route exists but not for the requested HTTP method.
+
+Now suppose production returns `502`.
+
+That suggests a different category of problem. A reverse proxy or gateway may be unable to obtain a valid response from its upstream service.
+
+A `404` and a `502` should not trigger the same debugging process.
+
+The response provides a clue about which layer to investigate.
+
+### 5.6 HTTP is stateless by design
+
+HTTP is stateless, which means the server does not automatically remember previous requests from the same client.
+
+Each request is handled independently unless the application provides information that connects it to earlier requests, such as a session cookie or an authentication token.
+
+Example: When a user logs in, the server needs a way to recognize them in subsequent requests. A session cookie can carry a session ID, allowing the server to identify the user's session without requiring them to log in again with every request.
+
+This does not mean the server cannot remember users.
+
+It means HTTP does not automatically maintain a built-in conversational memory of every client request.
+
+We will explore this distinction in Section 7.
+
+### 5.7 HTTP versions: Why are there multiple versions?
+
+HTTP has evolved because the web's performance requirements have changed.
+
+- **HTTP/1.1** supports persistent connections and has well-established request and response semantics.
+- **HTTP/2** introduces binary framing and multiplexing multiple streams over a single connection.
+- **HTTP/3** uses QUIC over UDP, integrating transport features that help address some limitations of TCP-based HTTP.
+
+These versions preserve the core HTTP application semantics while changing how messages are framed or transported.
+
+HTTP/2 multiplexing can reduce certain delays caused by HTTP/1.1 request scheduling. But HTTP/2 over TCP still experiences TCP-level head-of-line blocking when packet loss prevents later bytes from being delivered in order.
+
+HTTP/3's use of QUIC allows loss affecting one stream to be isolated more effectively from unrelated streams, although network loss can still hurt performance.
+
+You do not need to memorize every protocol detail yet. The important principle is this:
+
+**Application protocols evolve partly because the behavior of the underlying transport affects real-world performance.**
+
+## 6. HTTPS and TLS: What Makes Communication Secure?
+
+### 6.1 What is wrong with plain HTTP?
+
+Imagine logging into a website using an unencrypted connection.
+
+Your browser sends a request containing login information.
+
+If the traffic crosses a network where an attacker can observe or manipulate it, that attacker may be able to read the contents or alter the communication.
+
+Plain HTTP does not provide cryptographic protection against such observation or tampering.
+
+HTTPS addresses this by using HTTP over a TLS-protected connection.
+
+### 6.2 What does TLS provide?
+
+TLS is designed to provide three important properties.
+
+#### Confidentiality
+
+The contents of protected communication are encrypted so that parties without the required cryptographic keys cannot ordinarily read them.
+
+#### Integrity
+
+The recipient can detect unauthorized modification of protected data.
+
+#### Authentication
+
+In typical HTTPS usage, the browser validates the server's certificate and its relationship to the requested hostname, helping establish that it is communicating with the intended server.
+
+The exact security properties depend on the protocol configuration and certificate validation.
+
+HTTPS does not automatically guarantee that a website is honest, bug-free, or safe to use. A malicious website can also use HTTPS.
+
+### 6.3 What happens during a simplified HTTPS connection?
+
+Imagine visiting:
+
+```text
+https://api.example.com
+```
+
+A simplified sequence is:
+
+1. The client resolves the domain using DNS when necessary.
+2. The client establishes or reuses an appropriate transport connection.
+3. For HTTPS, the client and server perform a TLS handshake when a new TLS connection is required.
+4. The client validates the server's certificate.
+5. The handshake establishes cryptographic keys and negotiated connection parameters.
+6. The client sends HTTP data protected by TLS.
+7. The server processes the request and returns a protected response.
+
+For HTTP/1.1 and HTTP/2, TLS commonly operates over TCP. HTTP/3 uses QUIC, which integrates TLS 1.3 handshake mechanisms with the transport.
+
+This is a simplified explanation. Real connection setup can include protocol negotiation, session resumption, and other optimizations.
+
+### 6.4 Why can HTTPS take longer than HTTP?
+
+A new HTTPS connection can require additional handshake work.
+
+A traditional new TCP connection needs a network round trip for its handshake. TLS then needs handshake communication before protected application data can normally flow.
+
+That additional work can increase initial connection latency.
+
+However, the exact number of round trips depends on the protocols and configuration. TLS session resumption, connection reuse, HTTP/2, HTTP/3, and other mechanisms can reduce the overhead.
+
+This is why it is misleading to conclude that HTTPS is always significantly slower than HTTP.
+
+The cost depends on the connection lifecycle and network conditions.
+
+### 6.5 What if the certificate expires?
+
+Suppose the certificate presented for `api.example.com` is expired.
+
+A browser will normally reject the HTTPS connection or display a security warning rather than treating the connection as properly authenticated.
+
+Your backend may still be running. DNS may still work. The server may even accept TCP connections.
+
+But clients can fail at the TLS authentication stage before they send the HTTP request.
+
+This illustrates why debugging needs to follow the actual connection sequence.
+
+### 6.6 What if you use HTTPS but your API is still insecure?
+
+HTTPS protects communication in transit, but it does not fix every application security issue.
+
+For example:
+
+- An endpoint may allow unauthorized access.
+- A session token may be stolen through compromised client-side code.
+- The backend may return sensitive data to the wrong user.
+- A database may be exposed through a separate security failure.
+- A server may accept malicious input.
+
+HTTPS is necessary for modern web applications, but application authorization, secure session handling, input validation, and operational security remain essential.
+
+### 6.7 HTTP versus HTTPS
+
+**HTTP:** Transfers data between a client and server without built-in encryption. This means someone who can intercept the connection may be able to read or modify the data.
+
+**HTTPS:** Uses TLS to protect data while it travels between the client and server. It encrypts the data, verifies the server's identity using its TLS certificate, and helps detect tampering during transmission.
+
+Default ports:
+
+- HTTP typically uses port `80`.
+- HTTPS typically uses port `443`.
+
+Example: When you log in to a website using HTTP, your credentials may be exposed to someone intercepting the connection. With HTTPS, TLS encrypts the credentials during transmission, making them much harder to read.
+
+## 7. Statelessness: Why Doesn't the Server Automatically Remember You?
+
+This is one of the most important concepts for backend engineering.
+
+### 7.1 Imagine a conversation
+
+Suppose you send someone a message:
+
+> My name is Asha.
+
+Then, five minutes later, you ask:
+
+> What is my name?
+
+If the person remembers your previous message, they can answer.
+
+Now imagine every message was delivered to a different stranger, with no shared history.
+
+The second person has no idea what you said earlier.
+
+HTTP requests are similar in the sense that HTTP does not automatically supply a persistent conversation history for every client.
+
+Consider:
+
+```http
+GET /api/profile
+```
+
+The server receives the request.
+
+It processes it and returns a response.
+
+Then the next request arrives:
+
+```http
+GET /api/orders
+```
+
+The protocol does not automatically guarantee that the second request carries all the context of the first request.
+
+If the application needs that context, it must provide a mechanism for carrying or recovering it.
+
+### 7.2 What does statelessness mean in practice?
+
+Suppose your backend serves a million users.
+
+A simplistic implementation might attempt to keep all user session information only in the memory of one application process.
+
+That can work in a small system, but it creates problems when requests reach different application instances.
+
+Consider:
+
+```text
+                Load Balancer
+                 /         \
+                v           v
+            Server A     Server B
+```
+
+The user logs in through Server A.
+
+Server A stores the session in its local memory.
+
+The next request reaches Server B.
+
+Server B does not have that local session.
+
+The user appears logged out, even though the previous request succeeded.
+
+This is one reason application designers distinguish stateless request handling from stateful session storage.
+
+### 7.3 Stateless does not mean the application has no state
+
+This is a common misunderstanding.
+
+Your backend can be stateless with respect to individual application instances while still using persistent state in a database or a shared session store.
+
+For example:
+
+```text
+Browser
+   |
+   v
+Load Balancer
+   |
+   +------------------+
+   |                  |
+   v                  v
+Server A            Server B
+   |                  |
+   +--------+---------+
+            |
+            v
+      Shared database
+```
+
+If either server can recover the necessary information from a shared data store, the request does not depend on one particular instance's private memory.
+
+The shared database still contains state.
+
+The important distinction is where the state lives and whether a request depends on one specific application process.
+
+### 7.4 Why is statelessness useful?
+
+It can make scaling and failure recovery easier.
+
+If requests can be handled by any healthy application instance, a load balancer has more flexibility in distributing traffic.
+
+If one instance fails, another instance can often handle the next request without reconstructing all state that existed only in the failed process.
+
+However, statelessness does not automatically solve every scaling problem.
+
+The database, session store, external services, and other shared dependencies can still become bottlenecks or points of failure.
+
+Stateless application instances simplify one part of the system; they do not make the whole system stateless.
+
+### 7.5 What if a server restarts?
+
+Imagine the application stores a user's session only in local memory.
+
+The server restarts.
+
+The in-memory session disappears.
+
+If the client depends on that session, it may need to authenticate again.
+
+Now imagine the session is stored in a durable database or a suitable shared store.
+
+A process restart does not automatically erase the stored session.
+
+The application may be able to recover it, provided the session remains valid and the shared store is available.
+
+This is an example of how state placement affects resilience.
+
+## 8. Cookies: How Does a Browser Carry State Between Requests?
+
+### 8.1 The problem
+
+HTTP requests are independent in the sense described above.
+
+But web applications often need to recognize a user across multiple requests.
+
+Imagine you log into a website.
+
+You submit your username and password. The backend verifies your credentials.
+
+Now you visit another page.
+
+How does the backend know that the second request belongs to the authenticated user?
+
+One common mechanism uses cookies.
+
+A cookie is a small piece of data that a browser stores and sends with matching requests according to its cookie rules.
+
+Cookies are not the only way to maintain state, but they are widely used for browser-based authentication and sessions.
+
+### 8.2 A basic cookie flow
+
+Suppose the browser sends:
+
+```http
+POST /api/login HTTP/1.1
+Host: example.com
+Content-Type: application/json
+
+{"email":"asha@example.com","password":"example"}
+```
+
+Assume the backend verifies the credentials successfully.
+
+The server might return:
+
+```http
+HTTP/1.1 200 OK
+Set-Cookie: session_id=abc123; HttpOnly; Secure; SameSite=Lax; Path=/
+Content-Type: application/json
+
+{"message":"Logged in"}
+```
+
+This is an illustrative example, not a production session implementation.
+
+The important part is:
+
+```http
+Set-Cookie: session_id=abc123
+```
+
+The server asks the browser to store a cookie.
+
+When the browser later sends a matching request, it may automatically include:
+
+```http
+Cookie: session_id=abc123
+```
+
+The backend can use that session identifier to look up the corresponding session information.
+
+### 8.3 Where does the actual session data live?
+
+There are two broad approaches.
+
+#### Approach A: Server-side session
+
+The cookie contains a session identifier.
+
+The server uses that identifier to look up session information in a database, cache, or another session store.
+
+```text
+Browser
+   |
+   | Cookie: session_id=abc123
+   v
+Backend
+   |
+   | Lookup session
+   v
+Session Store
+   |
+   v
+User identity and session state
+```
+
+Advantages:
+
+- The server can invalidate a session centrally.
+- Sensitive session data need not be placed directly in the cookie.
+- Session policy can be controlled by the backend.
+
+Trade-offs:
+
+- The session store must be available.
+- Session lookups add work.
+- Session storage and expiration must be managed correctly.
+
+#### Approach B: Self-contained token
+
+The cookie contains a signed token, such as a JSON Web Token (JWT).
+
+The backend can verify the token's signature and claims without necessarily looking up a session record on every request.
+
+However, a signed JWT is not automatically encrypted. Its payload can often be decoded by whoever obtains it.
+
+JWTs also introduce trade-offs involving revocation, expiration, key rotation, and claim freshness.
+
+A JWT stored in a cookie is still sent according to cookie rules. The token format does not eliminate the browser security concerns associated with cookies.
+
+Neither approach is universally superior. The right choice depends on the application's requirements.
+
+### 8.4 What do cookie attributes mean?
+
+A cookie can include several security-related attributes.
+
+#### `HttpOnly`
+
+```http
+Set-Cookie: session_id=abc123; HttpOnly
+```
+
+This prevents ordinary JavaScript access to that cookie through browser APIs such as `document.cookie`.
+
+It helps reduce the risk of session-cookie theft through certain cross-site scripting attacks.
+
+It does not prevent malicious JavaScript from making authenticated requests through the browser.
+
+#### `Secure`
+
+```http
+Set-Cookie: session_id=abc123; Secure
+```
+
+This tells the browser to send the cookie only over secure connections, subject to the browser's cookie rules.
+
+For production authentication cookies, HTTPS is essential.
+
+#### `SameSite`
+
+```http
+Set-Cookie: session_id=abc123; SameSite=Lax
+```
+
+`SameSite` controls when cookies are sent in cross-site contexts.
+
+Common values include:
+
+- `Strict`
+- `Lax`
+- `None`
+
+`SameSite` can help mitigate some cross-site request forgery (CSRF) scenarios, but it is not a universal replacement for appropriate CSRF defenses.
+
+Cookies marked `SameSite=None` generally need the `Secure` attribute.
+
+#### `Path` and `Domain`
+
+These attributes influence which requests match a cookie.
+
+They should be configured deliberately. A broader cookie scope can expose the cookie to more requests than necessary.
+
+### 8.5 What if the cookie expires?
+
+Suppose your session cookie expires at 5 PM.
+
+The user makes a request at 5:05 PM.
+
+Depending on the cookie's configuration and the application's own session rules, the browser may no longer send the cookie, or the server may reject the expired session.
+
+The user may need to authenticate again.
+
+Cookie expiration and server-side session expiration are related but separate concerns.
+
+If the browser still has a cookie but the server has already invalidated its session, the request should not be treated as authenticated.
+
+### 8.6 What if a cookie is stolen?
+
+Suppose an attacker obtains a valid session cookie.
+
+If the application relies on that cookie as proof of authentication, the attacker may be able to impersonate the user until the session is invalidated or expires.
+
+This is why secure session handling matters.
+
+Common defenses include:
+
+- HTTPS throughout authenticated sessions.
+- `Secure` and `HttpOnly` attributes.
+- Appropriate `SameSite` settings.
+- Protection against cross-site scripting.
+- CSRF defenses where required.
+- Session expiration and invalidation.
+- Avoiding unnecessary exposure of session identifiers.
+- Monitoring suspicious authentication behavior.
+
+No single cookie attribute protects against every attack.
+
+### 8.7 What if the browser sends a cookie to the wrong site?
+
+Browsers apply cookie domain, path, security, and same-site rules to determine when cookies are sent.
+
+A cookie configured for one domain is not simply attached to every HTTP request made by the browser.
+
+This matters because cookies can act as credentials. Their scope should be no broader than necessary.
+
+It is also important to distinguish origin from site. Origin is based on scheme, host, and port, while site calculations follow different rules. That distinction affects CORS and cookie behavior.
+
+### 8.8 A useful mental model
+
+Think of the responsibilities this way:
+
+- HTTP: Defines the request/response communication.
+- Cookie: Provides a browser-managed mechanism for carrying data between matching requests.
+- Session identifier: Can identify a server-side session.
+- Session store: Holds the session information, if the application uses server-side sessions.
+- Authentication: Establishes who the user is.
+- Authorization: Determines what that user is allowed to do.
+
+A valid cookie does not automatically mean every requested action should be permitted.
+
+## 9. Latency: Why Does a Request Take Time?
+
+### 9.1 What is latency?
+
+Latency is the delay between an event and the corresponding response or outcome.
+
+For networking, we often care about how long data takes to travel between endpoints, or how long a request takes to produce a response.
+
+Imagine pressing a button in a web application.
+
+You see a loading indicator.
+
+After 100 milliseconds, the result appears.
+
+That delay is part of the user-perceived latency.
+
+But what contributes to it?
+
+Potential contributors include:
+
+- DNS lookup time.
+- Connection establishment.
+- TLS handshake time.
+- Network transmission and propagation.
+- Waiting for network queues.
+- Server processing.
+- Database queries.
+- Waiting for downstream services.
+- Response transmission.
+- Browser processing and rendering.
+
+A request's total time can include many of these components, although some work overlaps or is avoided through caching and connection reuse.
+
+### 9.2 Propagation delay: Distance matters
+
+Imagine a request travelling from India to a server in the United States.
+
+Even if the network had unlimited bandwidth and no congestion, the signal would still need time to travel.
+
+Signals do not travel infinitely fast.
+
+The actual path may involve fiber-optic cables, routers, and other equipment. The physical route may be longer than the straight-line distance.
+
+This creates propagation delay.
+
+It explains why moving a server closer to its users can improve response time, even when the application code remains unchanged.
+
+### 9.3 What is RTT?
+
+RTT stands for Round-Trip Time.
+
+It measures how long it takes for a signal or packet to travel to a destination and for a corresponding response to return, as measured by the relevant tool or protocol.
+
+For example:
+
+```text
+Client sends probe:  10:00:00.000
+Response received:   10:00:00.040
+```
+
+The observed RTT is approximately 40 milliseconds.
+
+RTT is not the same as one-way latency. It includes the outward and return paths and any processing or queuing involved in that measurement.
+
+The two directions may also have different delays.
+
+### 9.4 Why do network round trips matter?
+
+Suppose a browser needs to perform three sequential network exchanges, each taking approximately 50 milliseconds of round-trip time.
+
+If each exchange must finish before the next begins, the network contribution alone can be roughly:
+
+\[
+$$
+3 \times 50\text{ ms} = 150\text{ ms}
+$$
+\]
+
+This is an illustrative estimate, not a guarantee.
+
+Real requests may overlap, reuse connections, or involve different RTTs.
+
+The lesson is that sequential round trips can add up even when each individual round trip seems fast.
+
+This is one reason connection reuse, caching, and reducing unnecessary sequential requests can improve performance.
+
+### 9.5 What if latency increases suddenly?
+
+Imagine your API normally responds in 100 milliseconds.
+
+Suddenly, the average rises to 700 milliseconds.
+
+Potential causes include:
+
+- A network route has changed.
+- Congestion has increased.
+- The server is overloaded.
+- A database query is slower.
+- DNS resolution is taking longer.
+- A downstream dependency is responding slowly.
+- A connection is being repeatedly established instead of reused.
+
+The correct investigation is not to assume the Internet is slow or immediately rewrite the backend.
+
+Measure the different phases of the request.
+
+Useful measurements include:
+
+- DNS lookup duration.
+- TCP connection time.
+- TLS handshake time.
+- Time to first byte (TTFB).
+- Total request duration.
+- Server-side processing time.
+- Database query duration.
+
+TTFB measures the time until the first byte of a response is received, but it is not a pure measurement of server processing time. It can include network and connection-related delays.
+
+### 9.6 Latency and server processing are different
+
+Suppose your backend performs this operation:
+
+```ts
+app.get("/api/profile", async (req, res) => {
+  const profile = await db.query.profiles.findFirst();
+  res.json(profile);
+});
+```
+
+Imagine the database query takes 400 milliseconds.
+
+Even if the network round trip is only 20 milliseconds, the total request may still be dominated by database time.
+
+Conversely, your backend might execute in 5 milliseconds while a distant client experiences substantial network delay.
+
+The fastest way to optimize a request is to identify where the time is actually spent.
+
+## 10. Throughput: How Much Work Can the System Complete?
+
+### 10.1 Latency and throughput answer different questions
+
+Suppose one server can process a request in 100 milliseconds.
+
+If requests were processed strictly one at a time, and each took exactly 100 milliseconds, the theoretical processing rate would be:
+
+\[
+$$
+\frac{1}{0.1} = 10 \text{ requests per second}
+$$
+\]
+
+But real servers often process many requests concurrently.
+
+A request may spend time waiting for a database or network operation. During that wait, the server can often work on other requests.
+
+Consequently, a server can sustain a much higher throughput than the reciprocal of one request's total latency would suggest.
+
+Latency asks: How long does an operation take?
+
+Throughput asks: How much work gets completed per unit of time?
+
+Throughput might be measured in:
+
+- Requests per second.
+- Transactions per second.
+- Messages per second.
+- Megabytes per second.
+
+Always identify which kind of work the measurement refers to.
+
+### 10.2 What if traffic doubles?
+
+Suppose your service receives 500 requests per second.
+
+Then traffic rises to 1,000 requests per second.
+
+What happens?
+
+It depends on the system's available capacity and the behavior of its dependencies.
+
+If the service has sufficient capacity, latency may remain relatively stable.
+
+If it is close to saturation, queues can grow. Requests wait longer, timeouts increase, and retries may add even more load.
+
+This can create a feedback loop:
+
+```text
+More incoming requests
+        |
+        v
+Resources approach saturation
+        |
+        v
+Requests wait longer
+        |
+        v
+More timeouts and retries
+        |
+        v
+Even more load
+```
+
+This is one reason overload handling matters.
+
+Simply adding retries is not always a solution. Retries can make an overloaded system worse if they are not bounded and coordinated.
+
+### 10.3 Concurrency and throughput
+
+Imagine your API receives 100 requests.
+
+If every request waits for an external service, a concurrent server can potentially have many requests in flight while waiting for those operations to complete.
+
+But concurrency is not free.
+
+Every in-flight request may consume some combination of:
+
+- Memory.
+- Socket resources.
+- Database connections.
+- CPU time.
+- Queue capacity.
+- Downstream service capacity.
+
+A system that allows unlimited concurrent requests can exhaust resources.
+
+Production services often need bounded concurrency, queue limits, timeouts, and backpressure.
+
+### 10.4 A useful relationship: Little's Law
+
+Little's Law relates the average number of items in a system, the average arrival or completion rate, and the average time spent in the system under appropriate steady-state conditions.
+
+\[
+$$
+L = \lambda W
+$$
+\]
+
+Where:
+
+- \(L\) is the average number of items in the system.
+$$
+- \(\lambda\) is the average throughput or arrival rate.
+$$
+- \(W\) is the average time spent in the system.
+
+Suppose an API handles an average of 200 requests per second, and each request spends an average of 0.25 seconds in the system.
+
+Then the average number of requests in flight is approximately:
+
+\[
+$$
+L = 200 \times 0.25 = 50
+$$
+\]
+
+So there are about 50 requests in the system on average.
+
+This is not necessarily a problem.
+
+But if latency rises to 2 seconds while the arrival rate remains 200 requests per second, then:
+
+\[
+$$
+L = 200 \times 2 = 400
+$$
+\]
+
+Now there are about 400 requests in the system on average.
+
+Depending on the implementation, this can mean much more memory use, more pending work, and greater pressure on dependencies.
+
+This is why latency and concurrency cannot be considered independently.
+
+## 11. Bandwidth: How Much Data Can the Network Carry?
+
+### 11.1 The road analogy
+
+Imagine a road between two cities.
+
+A narrow road can carry fewer vehicles per unit of time than a wide road, assuming comparable conditions.
+
+Bandwidth is somewhat similar to the capacity of a communication link.
+
+In networking, bandwidth can refer to the capacity of a channel or link to carry data. In everyday Internet discussions, people often use it to mean a data rate, such as 100 megabits per second.
+
+Bandwidth is not the same thing as latency.
+
+A link can have high bandwidth but high latency.
+
+For example, a high-capacity link connecting two distant locations may transfer large files quickly once transmission is underway, yet still have a substantial round-trip time.
+
+### 11.2 Bits versus bytes
+
+Network speeds are often measured in bits per second.
+
+File sizes are commonly measured in bytes.
+
+Remember:
+
+```text
+1 byte = 8 bits
+```
+
+Therefore:
+
+```text
+100 Mbps = 100 megabits per second
+```
+
+The idealized equivalent in megabytes per second is:
+
+\[
+$$
+100 \div 8 = 12.5 \text{ MB/s}
+$$
+\]
+
+This is a theoretical conversion, not a promise of real file-transfer speed.
+
+Actual throughput can be lower because of protocol overhead, congestion, competing traffic, Wi-Fi conditions, server limitations, and other factors.
+
+Also, network providers commonly use decimal units for advertised speeds: 1 Mbps means 1,000,000 bits per second.
+
+### 11.3 Bandwidth versus throughput
+
+These terms are related but not interchangeable.
+
+- **Bandwidth:** The capacity or configured rate of a communication link or path, depending on the context.
+- **Throughput:** The actual rate at which data is transferred or useful work is completed.
+- **Goodput:** The rate of useful application data delivered, excluding some protocol overhead and retransmitted data.
+
+Suppose a network link is rated for 100 Mbps.
+
+Your file download achieves 35 Mbps.
+
+That does not necessarily mean the link is broken. The achieved throughput may be limited by congestion, the remote server, Wi-Fi, protocol overhead, or another part of the path.
+
+The bottleneck may be somewhere other than the link you are looking at.
+
+### 11.4 What if bandwidth is high but the website still feels slow?
+
+Imagine you have a very fast Internet connection.
+
+Yet clicking a button takes two seconds to produce a result.
+
+The request might be small and require very little bandwidth.
+
+Its delay may instead be caused by:
+
+- A slow DNS lookup.
+- A new connection handshake.
+- A distant server.
+- A slow database query.
+- A downstream API.
+- A long sequence of dependent requests.
+
+Increasing bandwidth does not automatically remove these delays.
+
+A small request can have poor latency on a high-bandwidth network.
+
+### 11.5 What if the response is huge?
+
+Now imagine the backend returns a 200 MB file.
+
+Even if the request is processed quickly, transferring the response takes time.
+
+The theoretical transfer time can be approximated by:
+
+\[
+$$
+\text{Transfer time} \approx
+\frac{\text{Data size in bits}}{\text{Throughput in bits per second}}
+$$
+\]
+
+For a 200 MB file using decimal units:
+
+```text
+200 MB = 1,600 megabits
+```
+
+At an ideal sustained rate of 100 Mbps:
+
+```text
+1,600 megabits ÷ 100 megabits/second
+= 16 seconds
+```
+
+Real transfers can take longer.
+
+This is where bandwidth and throughput matter directly.
+
+Potential optimizations include compression where appropriate, reducing unnecessary response data, using streaming, and serving large static assets through a suitable content delivery network.
+
+Each optimization addresses a particular bottleneck; none is universally applicable.
+
+## 12. How These Concepts Fit Together: Opening a Website
+
+Now let's trace the complete process.
+
+You type:
+
+```text
+https://example.com
+```
+
+What happens?
+
+The following sequence is a useful mental model, although browsers may reuse connections, perform work concurrently, and skip steps when cached information is available.
+
+### Step 1: The browser interprets the URL
+
+The browser identifies the scheme, hostname, and requested resource.
+
+```text
+Scheme:    https
+Hostname:  example.com
+Path:      /
+```
+
+The scheme tells the browser to use HTTPS.
+
+### Step 2: The browser checks whether it can reuse existing information
+
+The browser may have cached DNS results, connection state, TLS session information, or HTTP responses.
+
+If a valid cached response can be used, the browser may not need to contact the origin server for every resource.
+
+Otherwise, it continues with the necessary network operations.
+
+### Step 3: DNS resolution
+
+If an address is needed, the browser's networking stack obtains DNS information for the hostname.
+
+The answer may come from a local cache or a recursive DNS resolver.
+
+The result identifies one or more addresses that the client may attempt to use.
+
+### Step 4: The client establishes a connection
+
+For HTTP/1.1 or HTTP/2 over TCP, the client normally establishes a TCP connection unless it can reuse an existing one.
+
+For HTTP/3, the client uses QUIC over UDP.
+
+The exact process depends on the negotiated protocol and the connection's current state.
+
+### Step 5: TLS protects HTTPS communication
+
+For a new HTTPS connection, the client and server establish the required cryptographic parameters and validate the server's certificate.
+
+With QUIC, TLS handshake mechanisms are integrated into the QUIC connection establishment process.
+
+### Step 6: The browser sends an HTTP request
+
+Conceptually, the request might be:
+
+```http
+GET / HTTP/1.1
+Host: example.com
+Accept: text/html
+```
+
+If applicable, the browser also sends matching cookies and other request headers.
+
+The actual HTTP version and wire representation may differ.
+
+### Step 7: Network infrastructure forwards the traffic
+
+Packets travel through the relevant network path.
+
+Routers forward IP packets. Link-layer technologies carry data across individual network segments. Firewalls, gateways, and other intermediaries may inspect or control traffic.
+
+A reverse proxy or load balancer may receive the connection before the application server does.
+
+### Step 8: The server processes the request
+
+The request reaches an HTTP server or proxy.
+
+The service might:
+
+- Check routing rules.
+- Authenticate the user.
+- Authorize the operation.
+- Read from a cache.
+- Query a database.
+- Call another service.
+- Construct a response.
+
+Not every request needs every step.
+
+### Step 9: The server returns a response
+
+The server returns an HTTP response with a status code, headers, and possibly a body.
+
+For example:
+
+```http
+HTTP/1.1 200 OK
+Content-Type: text/html
+```
+
+The response travels back through the network.
+
+For HTTPS, the application data is protected by the negotiated cryptographic connection.
+
+### Step 10: The browser renders the result
+
+The browser receives and processes the response.
+
+If the HTML references CSS, JavaScript, images, or other resources, the browser may make additional requests.
+
+The complete page can therefore require many HTTP exchanges, not just one.
+
+Some of those requests may execute in parallel, and many resources may be cached.
+
+**The key insight:** Opening a website is not one magical operation. It is a sequence of coordinated operations involving naming, addressing, transport, security, application semantics, server processing, and rendering.
+
+## 13. Failure Scenarios
+
+Knowing the definitions is useful. Understanding what happens when something fails is where your system-design thinking begins.
+
+For every scenario, ask three questions:
+
+1. At which layer did the failure occur?
+2. What would the client observe?
+3. What evidence would help confirm the cause?
+
+### Scenario 1: DNS resolves to an old IP address
+
+**Situation:** You deploy a new backend, but some users still reach the previous server.
+
+**Reasoning:** A resolver may still have a cached DNS answer. The old server may also remain reachable, so the problem might look like inconsistent application behavior rather than a clear connection failure.
+
+**What to investigate:**
+
+- DNS records and TTLs.
+- Answers from different resolvers.
+- Whether the old service is still running.
+- Connection reuse and the deployment strategy.
+
+**Lesson:** DNS changes and application deployments are separate operations.
+
+### Scenario 2: The domain resolves, but the connection is refused
+
+**Situation:** `api.example.com` resolves to an IP address, but the client cannot establish a TCP connection to port `443`.
+
+**Reasoning:** DNS may be working correctly. The target port might not have a listener, or a firewall or network device may actively reject the connection.
+
+**What to investigate:**
+
+- The resolved destination address.
+- Whether the service is listening.
+- Firewall and security-group rules.
+- Load balancer and proxy configuration.
+
+**Lesson:** DNS success does not prove that the service is listening.
+
+### Scenario 3: The server accepts connections but never responds
+
+**Situation:** A client connects successfully, sends a request, and waits indefinitely.
+
+**Reasoning:** The TCP connection may be established, but the application could be blocked, waiting for a dependency, or unable to complete the response.
+
+**What to investigate:**
+
+- Application logs and traces.
+- Request duration.
+- Database query times.
+- Downstream service latency.
+- Timeout configuration.
+- Resource exhaustion.
+
+**Lesson:** Connection establishment and request completion are different milestones.
+
+### Scenario 4: HTTPS fails after a certificate expires
+
+**Situation:** The backend is running, but browsers report a certificate error.
+
+**Reasoning:** The failure occurs during certificate validation, before normal authenticated HTTPS communication can proceed.
+
+**What to investigate:**
+
+- Certificate validity dates.
+- Certificate hostname coverage.
+- Certificate chain.
+- Renewal and deployment automation.
+- Whether a proxy is presenting the expected certificate.
+
+**Lesson:** Application health does not guarantee TLS health.
+
+### Scenario 5: Users are randomly logged out behind a load balancer
+
+**Situation:** Login works, but subsequent requests sometimes behave as though the user is unauthenticated.
+
+**Reasoning:** One server may store session information in local memory, while subsequent requests reach another server. Alternatively, the shared session store may be unavailable or sessions may be expiring unexpectedly.
+
+**What to investigate:**
+
+- Where session state is stored.
+- Whether all instances share the same session system.
+- Session expiration rules.
+- Cookie attributes and browser behavior.
+- Session-store errors.
+
+**Lesson:** State placement is an architectural decision, not merely an implementation detail.
+
+### Scenario 6: The API becomes slow during a traffic spike
+
+**Situation:** Requests normally take 100 milliseconds but begin taking several seconds when traffic rises.
+
+**Reasoning:** The service or one of its dependencies may be approaching capacity. Queues can grow, increasing latency and resource consumption.
+
+**What to investigate:**
+
+- Requests per second.
+- Latency percentiles.
+- CPU and memory.
+- Database connections and query times.
+- Queue depth.
+- Error and timeout rates.
+- Retry behavior.
+
+**Lesson:** More incoming work does not necessarily produce proportionally more completed work.
+
+### Scenario 7: The website is slow even with fast Internet
+
+**Situation:** A user has high advertised bandwidth, but page interactions remain slow.
+
+**Reasoning:** The delay may be dominated by round trips, server processing, dependencies, or sequential requests rather than response-transfer capacity.
+
+**What to investigate:**
+
+- DNS and connection timing.
+- Time to first byte.
+- Server-side traces.
+- Database timings.
+- The number of sequential network requests.
+- Payload size.
+
+**Lesson:** Diagnose latency and throughput separately.
+
+### Scenario 8: The server works locally but not from another computer
+
+**Situation:** Your development API works at `localhost:3000`, but another computer cannot reach it.
+
+**Reasoning:** The service may listen only on loopback, a firewall may block the port, or the other computer may be using an incorrect address.
+
+**What to investigate:**
+
+- The interface the server binds to.
+- The machine's network address.
+- Firewall rules.
+- Network routing.
+- Whether the service is intended to be publicly exposed.
+
+**Lesson:** `localhost` always refers to the local machine from the perspective of the client using it.
+
+### Scenario 9: A request times out, but the operation succeeds
+
+**Situation:** A user clicks "Create order." The browser times out. The user clicks again, and two orders are created.
+
+**Reasoning:** A timeout means the client did not receive a timely result. It does not prove that the server never processed the first request.
+
+The server may have completed the operation, but the response was delayed or lost.
+
+**What to investigate:**
+
+- Whether the operation completed on the server.
+- Whether retries are automatic.
+- Whether the API supports idempotency keys.
+- Whether the business operation is safe to repeat.
+
+**Lesson:** Network uncertainty can create duplicate operations. Retrying a request is not always harmless.
+
+### Scenario 10: DNS works, but the wrong website appears
+
+**Situation:** A domain resolves, the connection succeeds, but the user sees the wrong site.
+
+**Reasoning:** The IP may host multiple services. The HTTP `Host` header or TLS Server Name Indication (SNI) may be routed incorrectly, or a reverse proxy may be configured for the wrong hostname.
+
+**What to investigate:**
+
+- The requested hostname.
+- DNS records.
+- TLS certificate and SNI configuration.
+- Reverse proxy routing.
+- The deployed application version.
+
+**Lesson:** An IP address alone does not fully identify which website a shared server should serve.
+
+## Conclusion: Build a Mental Model, Not a Vocabulary List
+
+Let's return to the original question.
+
+You open a website. What actually happens?
+
+The browser identifies the destination from the URL. DNS may help it find an IP address. The client establishes or reuses a suitable connection. TCP or QUIC carries the data. TLS protects HTTPS communication. HTTP defines the application request and response. Routers and other network components move traffic toward the destination. The backend processes the request and sends a response. The browser receives and renders the result.
+
+Meanwhile, cookies can carry information between matching requests. The backend may use that information to recover a session. Latency affects how long the operation takes. Bandwidth and throughput affect how much data can be transferred and how much work the system can complete. Failures can happen at any stage.
+
+These are not isolated concepts.
+
+They form one connected system.
+
+When a request fails, don't immediately blame the backend.
+
+Ask whether the name resolved correctly. Whether the destination was reachable. Whether the right port was listening. Whether the connection was established. Whether TLS succeeded. Whether the HTTP request reached the right service. Whether the application completed its work. Whether the response made it back to the client.
+
+When a request is slow, don't immediately add a cache or rewrite the code.
+
+Measure where the time is spent.
+
+When a service struggles under load, don't confuse the number of incoming requests with the amount of work it can actually complete.
+
+Measure throughput, latency, concurrency, and resource consumption.
+
+And when you design a backend, remember that the application is only one part of the system. It depends on networking, operating-system behavior, external services, and the assumptions you make about failure.
+
+---
+
+*Written by Keshavvv*
+
+*Learning backend by building it.*

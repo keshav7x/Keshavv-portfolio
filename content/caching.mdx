@@ -1,0 +1,1604 @@
+---
+title: "Caching: A First-Principles Guide"
+description: "Understand caching from first principles, from cache hits and eviction policies to invalidation, stampedes, hot keys, and production trade-offs."
+author: "Keshavv"
+publishedAt: "2026-10-13"
+category: "Backend Engineering"
+tags:
+  - Caching
+  - Caching Strategies
+  - System Design
+  - Backend Engineering
+readTime: "36 min"
+---
+
+# Caching: A First-Principles Guide
+
+Okay, so if I ask you, what's caching?
+
+Can you explain it without using complicated technical words?
+
+Let's figure it out together.
+
+## 1. Imagine You're Studying for an Exam
+
+Let's say you're studying at your desk. You have a few books open in front of you, but most of your books are kept in another room.
+
+Every time you need a book, you have two options:
+
+1. Walk to the other room, find the book, bring it back, and continue studying.
+2. Keep the books you frequently use on your desk so you can access them immediately.
+
+Which option would you choose?
+
+Obviously, the second one.
+
+Why?
+
+Because walking to another room every time you need a book wastes time. Keeping frequently used books on your desk makes your work faster.
+
+Congratulations! You just understood the fundamental idea behind caching.
+
+A **cache** is a place where we temporarily store data so we can access it faster when we need it again.
+
+Instead of repeatedly fetching something from a slower or more expensive source, we keep a copy somewhere closer and retrieve it when needed.
+
+That's caching.
+
+And this idea isn't limited to computers. We use the same principle in our everyday lives.
+
+## 2. Why Do We Even Need Caching?
+
+Now let's move from your study desk to a backend application.
+
+Imagine you're building a website where students can check their exam results.
+
+A student opens your website and requests their result.
+
+Your backend might need to:
+
+- Receive the HTTP request.
+- Authenticate the student.
+- Query the database.
+- Find the student's result.
+- Convert the result into a response.
+- Send the response back to the browser.
+
+Pretty straightforward, right?
+
+Now imagine 10,000 students checking their results at approximately the same time.
+
+If every request requires the backend to retrieve the same information from the database, the database has to do a lot of repetitive work.
+
+But here's an interesting question.
+
+**If the result hasn't changed, why should we perform the same expensive work every single time?**
+
+Suppose retrieving a particular result takes 100 milliseconds. If we could safely reuse a previously retrieved copy and return it in 5 milliseconds, we could significantly reduce the time spent fetching that result.
+
+These numbers are illustrative, but the idea is real.
+
+Caching helps us reduce:
+
+- Response latency.
+- Repeated database queries.
+- Computation.
+- Pressure on downstream services.
+- Infrastructure costs in some workloads.
+
+Notice something important, though.
+
+Caching doesn't magically make your database faster. It helps your application avoid asking the database to do the same work repeatedly.
+
+## 3. What Happens Without a Cache?
+
+Imagine 1,000 students request the same public exam schedule.
+
+Without an application-level cache, a simplified request flow might look like this:
+
+```text
+Client → Backend → Database → Backend → Client
+```
+
+Every request reaches the database.
+
+Even though the exam schedule is identical for everyone, the backend repeatedly retrieves the same data.
+
+Now let's introduce a cache:
+
+```text
+Client → Backend → Cache
+```
+
+If the requested schedule is already stored in the cache, the backend can return it without querying the database.
+
+But what happens if the schedule isn't in the cache?
+
+The backend can fetch it from the database, store a copy in the cache, and return the result.
+
+Here's the important idea: we want to avoid repeating expensive work when the result can safely be reused.
+
+## 4. Cache Hit vs. Cache Miss
+
+Two terms you'll encounter everywhere in caching are **cache hit** and **cache miss**.
+
+### Cache Hit
+
+A cache hit happens when the requested data is already available in the cache.
+
+For example:
+
+1. A student requests the exam schedule.
+2. The backend checks the cache.
+3. The schedule is found.
+4. The backend returns the cached result.
+
+The database doesn't need to be queried for that request.
+
+### Cache Miss
+
+A cache miss happens when the requested data isn't available in the cache.
+
+For example:
+
+1. A student requests the exam schedule.
+2. The backend checks the cache.
+3. The schedule isn't found.
+4. The backend queries the database.
+5. The backend stores the result in the cache.
+6. The backend returns the result.
+
+This pattern is commonly called **cache-aside**.
+
+Suppose 100 requests arrive for the same piece of data. The first request misses the cache, fills it, and finishes before the remaining requests arrive.
+
+If those other 99 requests find the cached entry, then:
+
+- Cache hits: 99
+- Cache misses: 1
+
+That's a simple example of how caching reduces repetitive work.
+
+In a real system, concurrent requests and cache expiration can change these numbers, but the underlying principle remains the same.
+
+## 5. What Exactly Do We Store in a Cache?
+
+Let's say your application has a database table containing users.
+
+A user requests their profile, and the database returns:
+
+```text
+User ID: 42
+Name: idk
+Email: idk@example.com
+```
+
+Your backend could store a copy of that result in a cache.
+
+But how will it find the correct copy later?
+
+This brings us to the concept of a **cache key**.
+
+A cache key identifies the data stored in the cache.
+
+For example:
+
+```text
+user:42
+```
+
+The cached value could contain the corresponding user profile.
+
+When the application receives another request for user 42, it checks the cache using `user:42`.
+
+But imagine storing every user's profile under the same key, `user`.
+
+What happens when user 42 and user 99 request their profiles?
+
+They could overwrite each other's cached values or receive the wrong data.
+
+That's a correctness bug, not just a performance issue.
+
+Cache keys must distinguish between different pieces of data.
+
+Some examples:
+
+```text
+user:42
+product:105
+post:900
+exam:schedule:2026
+```
+
+The right key depends on what you're caching and how the data is retrieved.
+
+If a response also depends on the tenant, language, permissions, or query filters, the cache key may need to account for those differences too.
+
+Otherwise, one user could receive data intended for another.
+
+## 6. Why Not Store Everything in a Cache?
+
+If caching is so useful, why not cache the entire database?
+
+Great question.
+
+Let's reason about it.
+
+### Problem 1: Memory Costs Money
+
+A database might contain millions of records, but your application may repeatedly access only a small percentage of them.
+
+Storing everything in a cache can require a huge amount of memory.
+
+Memory is a limited resource, and keeping an entire dataset in a cache may be unnecessarily expensive.
+
+### Problem 2: Not All Data Is Useful to Cache
+
+Imagine a database contains one million products.
+
+Perhaps 100 products account for most of the requests.
+
+Caching those popular products could provide substantial benefits without storing all one million products in application memory.
+
+Caching should follow access patterns, not the assumption that every record deserves a cached copy.
+
+### Problem 3: Cached Data Can Become Stale
+
+Suppose a product costs ₹500, and the cache stores that price.
+
+The business changes the price to ₹600 in the database.
+
+If the cached value still says ₹500, the application could show the wrong price.
+
+The more data you cache, the more entries you may need to maintain or invalidate when the original data changes.
+
+### Problem 4: A Cache Can Fail
+
+What happens if the cache server goes down?
+
+If the database remains available, the application may be able to retrieve data directly from it.
+
+However, the database could experience a sudden increase in traffic because requests that previously hit the cache now reach the database.
+
+If the application depends entirely on the cache and has no fallback, requests may fail.
+
+Also, caches are generally not the authoritative, durable source of truth. Losing a cache should not mean losing the application's only copy of important data.
+
+The database and the cache have different responsibilities.
+
+The database usually provides durable storage and data management. The cache helps reduce the cost of retrieving or computing frequently needed information.
+
+**A cache is not a replacement for your database.**
+
+## 7. Is a Cache Only Used Between the Backend and Database?
+
+No! This is where caching becomes especially interesting.
+
+Caching can happen at several layers of a system.
+
+### 7.1 Client-Side Caching
+
+Let's start with something you probably use every day: your web browser.
+
+Imagine you're visiting a website for the first time. The website contains images, buttons, styles, fonts, and JavaScript code that makes different features work.
+
+When you open the website, your browser needs to download the resources required to display and run it. Depending on the website, these resources might come from the server, a CDN, or another source.
+
+For example, imagine you're visiting a website that contains:
+
+- A logo at the top of the page.
+- Images of products.
+- A CSS file that controls the colors, spacing, and layout.
+- A JavaScript file that handles interactions.
+- Fonts that determine how the text looks.
+
+Your browser downloads the resources it needs and uses them to display the website.
+
+Now, here's an interesting question.
+
+What happens when you visit the same website again?
+
+Does your browser need to download every single resource all over again?
+
+Not necessarily.
+
+If the browser has a cached copy of a resource and its caching rules allow that copy to be reused, it may use the local copy instead of downloading the resource again.
+
+That's the basic idea behind client-side caching.
+
+Client-side caching means storing certain data or resources on the user's device so they can be reused later without always requesting them from a remote server.
+
+The client might be a web browser, a mobile application, or another application running on the user's device.
+
+#### Imagine Visiting the Same Website Twice
+
+Suppose you visit an online shopping website for the first time.
+
+The browser requests the website's logo from a server. The server returns the image, and the browser displays it.
+
+Depending on the caching rules, the browser may also keep a copy of that image locally.
+
+Later, you visit another page on the same website. That page uses the same logo.
+
+Now the browser can check whether it already has a usable copy of the image.
+
+If the cached copy is still valid, the browser can reuse it without downloading the image again.
+
+Think about what we just avoided.
+
+The browser didn't need to download the same image again, and the server didn't need to send that image again.
+
+This can reduce unnecessary network requests, save bandwidth, and help pages load faster.
+
+The same idea can apply to other resources, such as stylesheets, JavaScript files, fonts, and certain HTTP responses.
+
+#### Where Is the Cached Data Stored?
+
+The browser can store cached resources on the user's device, typically using browser-managed storage.
+
+You don't need to manually save each image or stylesheet. The browser manages its HTTP cache according to the caching rules and other conditions.
+
+For example, a server can send HTTP caching headers that tell the browser how a response may be cached and how long it can be reused without revalidation.
+
+One important detail: the browser doesn't necessarily cache every response, and it doesn't necessarily reuse every cached response.
+
+Whether a resource can be cached, how long it can be reused, and whether the browser needs to contact the server again depend on the resource, the HTTP caching rules, and the browser's behavior.
+
+#### What Happens When the Cached Resource Becomes Outdated?
+
+Let's say a website uses a logo called `logo.png`.
+
+Your browser downloads the image and stores a cached copy. A few days later, the website owner changes the logo.
+
+What happens if your browser continues using the old copy?
+
+You might still see the old logo even though the website has been updated.
+
+This is the same general problem we encounter with caching elsewhere: the cached copy can become outdated when the original resource changes.
+
+Browsers and web servers use caching rules to handle this.
+
+For example, a response might be reusable for a specified period. Once that period has passed, the browser may need to check with the server whether its cached copy is still valid before reusing it.
+
+This check is called **revalidation**.
+
+If the resource hasn't changed, the server can tell the browser that its existing copy is still valid. The browser can then reuse that copy rather than downloading the entire resource again.
+
+If the resource has changed, the browser can download the updated version.
+
+There are also other techniques, such as giving changed files new URLs or versioned filenames, that help browsers distinguish updated resources from older ones.
+
+We'll explore caching rules in more detail when discussing expiration and cache invalidation.
+
+#### Is Client-Side Caching Only About Images?
+
+No. Images are just an easy example to understand.
+
+Client-side caching can involve several types of resources:
+
+- **Images:** Logos, icons, product images, and other visual assets.
+- **CSS files:** Files that control the appearance and layout of a website.
+- **JavaScript files:** Code that runs in the browser to make the website interactive.
+- **Fonts:** Files used to display text in particular typefaces.
+- **HTTP responses:** Certain responses returned by a server, when their caching rules permit it.
+
+Web applications can also store application data locally using mechanisms such as IndexedDB or other browser storage. However, storing application data in local storage or IndexedDB is not exactly the same thing as using the browser's HTTP cache. These are different storage mechanisms with different purposes and rules.
+
+For example, an application might store some data locally so that it can be accessed again without immediately requesting it from the backend. Whether this is appropriate depends on the data and how the application handles updates.
+
+#### What Are the Benefits of Client-Side Caching?
+
+Let's put the benefits together.
+
+**1. Faster loading**
+
+When a browser can reuse a valid local copy, it doesn't need to download that resource again. This can help pages load faster, especially when they use the same resources repeatedly.
+
+**2. Fewer network requests**
+
+The browser may avoid making unnecessary requests for resources it already has and is allowed to reuse.
+
+**3. Less data transferred**
+
+Reusing cached resources can reduce the amount of data transferred over the network. This can be especially helpful for users with slow connections or limited data plans.
+
+**4. Less work for the server**
+
+When a cached response can be reused without contacting the server, the server doesn't need to handle that request. Across many users, this can reduce the work required to serve frequently reused resources.
+
+#### Does Client-Side Caching Solve Every Problem?
+
+Not quite.
+
+A browser's cache belongs to that particular client. If 10,000 people visit your website, each person's browser may have its own cached resources.
+
+This means client-side caching can reduce repeated requests from individual clients, but it doesn't automatically create one shared cache for all users.
+
+It also doesn't guarantee that every resource will load from the cache. The browser might not have a copy, the cached copy might have expired, or the caching rules might require a request to the server.
+
+And there's another important consideration: not all data should be cached in the same way.
+
+A logo or stylesheet can often be cached for a relatively long period, especially when updated versions use different filenames or URLs.
+
+Personal information, on the other hand, requires more careful handling. An application must consider privacy, security, user-specific data, and whether previously stored information is still appropriate to use.
+
+So, we shouldn't think of client-side caching as simply saving everything on the user's device.
+
+We need to decide what can safely be stored, when it can be reused, and how changes should be handled.
+
+The main idea is simple: client-side caching allows a browser or application to reuse suitable resources or data stored on the user's device instead of repeatedly retrieving them from a remote source.
+
+Now, let's move one step further.
+
+What if we want to cache content not just on an individual user's device, but closer to users across different regions of the world?
+
+That's where edge caching and Content Delivery Networks (CDNs) become useful.
+
+### 7.2 Edge Caching and CDNs
+
+Let's imagine your application is hosted in India, but someone from the United States visits your website.
+
+When the user requests an image, that request might need to travel all the way to your server in India. The server then sends the image back to the user.
+
+The greater the network distance, the more time communication can take.
+
+Now imagine thousands of users around the world requesting the same images. Sending every request to your origin server can also increase its workload.
+
+This is where **Content Delivery Networks (CDNs)** become useful.
+
+A CDN has servers distributed across different geographical locations. These servers can cache eligible content closer to users, reducing the need to fetch it from the origin server every time.
+
+For example, a CDN might cache your website's logo at an edge location in the United States. When another user nearby requests that logo, the CDN can serve its cached copy instead of contacting your server in India.
+
+The simplified flow looks like this:
+
+```text
+User → Nearby CDN edge → Origin server (if needed)
+```
+
+If the CDN edge already has a valid cached copy, it can return the content directly. If it doesn't, it can fetch the content from the origin server and cache it for future requests, depending on the CDN's configuration and caching rules.
+
+This is called **edge caching** because content is cached at locations closer to the users accessing it.
+
+CDNs are particularly useful for images, CSS and JavaScript files, videos, and public content that many users can safely share.
+
+The main idea is simple: instead of making every user fetch the same content from one distant server, we keep copies closer to where users are.
+
+### 7.3 Application-Level In-Memory Caching
+
+Let's start with a simple question.
+
+Where does your backend application run?
+
+Suppose you build a backend using Node.js and deploy it to a server. That server has RAM, just like your own laptop or PC.
+
+When your Node.js application runs, it uses some of that RAM to store variables, objects, and other data it needs.
+
+Now, here's the interesting part: we can use that same memory to temporarily store frequently accessed data so that our application can reuse it later.
+
+This is called **application-level in-memory caching**.
+
+Let's understand it with an example.
+
+Imagine your backend needs some application configuration, such as the website's name, supported languages, or other settings.
+
+Your application reads that configuration from a file or another service. If it needs the same configuration repeatedly, fetching it every time might be unnecessary.
+
+Instead, the application can read the configuration once and keep it in its memory.
+
+The next time it needs that configuration, it can reuse the copy already stored in memory instead of reading it again.
+
+The flow looks like this:
+
+**Without caching:**
+
+```text
+Backend → Read configuration → Use configuration
+```
+
+The application may repeat the read whenever it needs the configuration.
+
+**With in-memory caching:**
+
+```text
+Backend → Read configuration once → Keep it in RAM → Reuse it
+```
+
+The application can now access the stored configuration directly.
+
+#### So, Is This the RAM in Our Own Laptop or PC?
+
+Exactly! The idea is the same.
+
+If you run your Node.js backend on your laptop during development, the application's in-memory cache uses your laptop's RAM.
+
+If you deploy that backend to a cloud server, the cache uses the RAM available to that server.
+
+The important thing is that the cache lives in the memory of the machine running the application, not necessarily your personal computer.
+
+#### What Happens When We Run Multiple Backend Instances?
+
+Now imagine your application becomes popular, and you run five backend instances to handle more requests.
+
+Each instance runs as a separate application process and has its own memory.
+
+For example:
+
+- Backend A stores a product in its memory.
+- Backend B receives another request for that product.
+- Backend B doesn't automatically have access to the copy stored by Backend A.
+
+Why? Because their application memories are separate.
+
+If Backend A updates its local cached value, Backend B won't automatically receive that update either.
+
+This can become a problem when different backend instances need to share the same cached data.
+
+We'll explore how a distributed cache helps solve this problem in the next section.
+
+#### What Should We Remember?
+
+Application-level in-memory caching stores data in the RAM of the running backend application.
+
+It's fast because the application can access its local memory without making a network request to a separate cache service.
+
+However, the data is temporary. If the application process restarts, its in-memory cache is generally lost and must be populated again.
+
+So, in-memory caching is useful when we want to reuse data locally, but we must remember that each application instance has its own memory.
+
+### 7.4 Distributed Caching
+
+A distributed cache is a cache service that multiple application instances can access over a network.
+
+Instead of every backend maintaining an entirely separate cache, several servers can share cached entries.
+
+For example:
+
+```text
+Backend A ──┐
+            │
+Backend B ──┼── Shared cache
+            │
+Backend C ──┘
+```
+
+This is useful when an application runs across multiple machines or containers.
+
+Redis and Memcached are examples of technologies commonly used for distributed caching.
+
+### 7.5 Database-Internal Caching
+
+Just like your backend application, a database can also use RAM to store data it accesses frequently.
+
+Let's take PostgreSQL as an example.
+
+When PostgreSQL reads data from a database file on disk, it doesn't always need to read that data from the disk again the next time. It can keep the data in memory and reuse it when needed.
+
+PostgreSQL uses an area of memory called **shared buffers** to store copies of database pages.
+
+A database page is a small block of data that can contain table rows or index data.
+
+For example, if PostgreSQL frequently accesses a particular page containing user records, that page may already be in shared buffers when PostgreSQL needs it again. PostgreSQL can then access the cached page without reading it from disk again.
+
+The simplified flow looks like this:
+
+```text
+Database query → Check database memory → Read from disk if needed
+```
+
+PostgreSQL also benefits from the operating system's filesystem cache, which can keep file data in RAM.
+
+Remember, this is a simplified explanation. A database query can involve much more work than reading a single page, and whether data is already cached depends on what the database and operating system have in memory.
+
+Now comes the obvious question.
+
+**If the database already caches data, why would we need another cache?**
+
+## 8. If PostgreSQL Has a Cache, Why Do We Need an Application Cache?
+
+This is a common question, and the answer requires understanding that these caches operate at different layers.
+
+Imagine your backend executes the same query thousands of times:
+
+```sql
+SELECT * FROM products WHERE id = 42;
+```
+
+PostgreSQL may already have the relevant table and index pages in memory.
+
+That's great. It may avoid disk reads.
+
+But the application is still sending a request to PostgreSQL, and PostgreSQL still needs to process that request.
+
+Depending on the query, the database may need to perform work such as:
+
+- Parse or otherwise process the query.
+- Plan and execute it as needed.
+- Check relevant permissions and transaction state.
+- Access table and index pages.
+- Apply filters and other operations.
+- Construct and transmit the result.
+
+The precise work depends on the query and PostgreSQL's execution behavior.
+
+A warm database buffer cache can reduce disk I/O, but it doesn't eliminate the cost of executing a query.
+
+Now imagine the application already has the complete product response in an application cache.
+
+It can return that response without sending another database query.
+
+That's a different kind of optimization.
+
+**Database buffer cache vs. application cache**
+
+The key distinction is that a database buffer cache usually stores database pages, whereas an application cache can store a complete result that's ready for the application to use.
+
+One doesn't replace the other.
+
+Also, a distributed cache isn't automatically cheaper or faster than querying PostgreSQL. It adds its own infrastructure, network communication, serialization, and operational costs.
+
+Whether it helps depends on your workload.
+
+So, optimize the actual bottleneck rather than adding another cache by default.
+
+## 9. In-Memory Cache vs. Distributed Cache
+
+Let's compare two common approaches.
+
+### In-Memory Cache
+
+The data is stored in the RAM of the application process itself.
+
+**Advantages:**
+
+- Very low lookup overhead.
+- No separate cache-service network request.
+- Simple to implement for small, local datasets.
+
+**Disadvantages:**
+
+- Each application instance has its own cache.
+- Data may disappear when the process restarts.
+- Memory is limited.
+- Keeping multiple instances consistent can be difficult.
+
+### Distributed Cache
+
+The data is stored in a separate cache service that multiple application instances can access.
+
+**Advantages:**
+
+- Multiple application servers can share cached data.
+- Cache capacity can be managed independently of application instances.
+- A shared cache can simplify reuse across servers.
+
+**Disadvantages:**
+
+- Network latency is involved.
+- The cache service becomes another dependency.
+- It introduces operational and infrastructure costs.
+- Cache failures can affect many application instances.
+
+So which one is faster?
+
+An in-memory cache is generally faster for a local lookup because it avoids network communication. A distributed cache can still be much faster than a database operation that it avoids, but there is no universal guarantee.
+
+Consider a two-level cache:
+
+- **L1:** Local in-memory cache.
+- **L2:** Shared distributed cache.
+
+The request flow becomes:
+
+```text
+Application → L1 → L2 → Database
+```
+
+If L1 has the data, the application can return it immediately.
+
+If L1 misses but L2 hits, the application retrieves the value from L2 and may populate L1.
+
+If both miss, the application fetches the data from the database.
+
+This can reduce pressure on the shared cache, but it introduces another consistency problem: different application instances may hold different local copies.
+
+For example, one server may invalidate its local copy after an update while another server continues serving an older value.
+
+Multi-level caching is a trade-off between performance, complexity, and freshness.
+
+## 10. Cache Eviction: What Happens When the Cache Is Full?
+
+Let's return to our study-desk analogy.
+
+Your desk has limited space.
+
+At first, you put five books on it. Then ten. Then twenty.
+
+Eventually, there's no room for another book.
+
+What do you do?
+
+You remove books that are less useful so you can make space for the books you need now.
+
+A cache faces the same problem.
+
+When it reaches its memory limit, it may need to remove existing entries to make room for new ones.
+
+This is called **cache eviction**.
+
+An eviction policy determines which entries are selected for removal when space is needed.
+
+Let's explore the common policies.
+
+### 10.1 LRU — Least Recently Used
+
+LRU removes the entry that hasn't been accessed for the longest time.
+
+Imagine a cache containing:
+
+- `product:1` — accessed just now.
+- `product:2` — accessed 10 seconds ago.
+- `product:3` — accessed 30 minutes ago.
+
+If the cache needs space, LRU would generally select `product:3`, assuming these are the relevant entries and their access order is known.
+
+The idea is that recently accessed data may be more likely to be accessed again soon.
+
+LRU works well for some workloads, but not all.
+
+For example, a one-time scan through thousands of records can push out useful entries.
+
+### 10.2 LFU — Least Frequently Used
+
+LFU considers how often entries are accessed.
+
+Imagine:
+
+- Product A was accessed 500 times.
+- Product B was accessed 100 times.
+- Product C was accessed twice.
+
+If the cache needs to evict an entry, LFU may select Product C because it has the lowest access frequency.
+
+However, frequency alone doesn't tell the entire story. An entry that was extremely popular yesterday but is no longer relevant could still have a high frequency count.
+
+Real implementations may use aging or other mechanisms to account for changing access patterns.
+
+### 10.3 FIFO — First In, First Out
+
+FIFO removes entries based on insertion order.
+
+The entry that entered the cache earliest is selected first, regardless of how frequently or recently it was accessed.
+
+It's straightforward, but it may evict a frequently used entry simply because it was inserted earlier.
+
+### 10.4 TTL-Based Expiration
+
+TTL stands for **Time To Live**.
+
+It specifies how long a cached entry is considered valid.
+
+Suppose we cache a product for 300 seconds.
+
+After five minutes, the entry expires according to the cache's expiration semantics. The next request can treat it as unavailable and fetch fresh data.
+
+But here's an important distinction:
+
+**TTL expiration and capacity-based eviction are not the same thing.**
+
+- TTL determines how long an entry remains valid.
+- Eviction determines which entries are removed when memory or another resource constraint requires it.
+
+An entry can expire even when the cache has plenty of free memory. An entry can also be evicted before its TTL expires.
+
+And expiration alone doesn't necessarily mean that the underlying data was changed. It simply means the cached copy is no longer considered valid under that expiration policy.
+
+## 11. TTL: Why Should Cached Data Expire?
+
+Imagine caching a user's profile for five minutes.
+
+The application stores the profile at 10:00 AM.
+
+The cache entry has a TTL of 300 seconds.
+
+At approximately 10:05 AM, the entry expires.
+
+If the user requests the profile after expiration, the application can fetch a new copy from the database.
+
+Why is this useful?
+
+### Freshness
+
+TTL limits how long an entry can remain available without being refreshed or invalidated.
+
+It doesn't guarantee that data is always fresh. A database update can occur one second after the cache is populated, leaving the cached copy stale until it is invalidated or expires.
+
+### Memory Management
+
+Expiration can make entries eligible for cleanup and reuse of memory, depending on the cache implementation.
+
+### Recovery From Missed Invalidation
+
+Suppose an application forgets to invalidate a cached product after a price update.
+
+A finite TTL can prevent the old value from remaining valid indefinitely, assuming the entry eventually expires and the application refreshes it.
+
+### Choosing a TTL
+
+The right TTL depends on the data and business requirements.
+
+These are examples, not universal settings.
+
+One final detail: if many cache entries receive the exact same TTL at the same time, they may expire together. Later, we'll see why this can be dangerous.
+
+## 12. Cache Write Strategies
+
+So far, we've mostly discussed reading data.
+
+But what happens when an application changes data?
+
+Suppose a customer updates their profile.
+
+The database contains the original profile, and the cache may contain a copy.
+
+How should the application handle the write?
+
+There are several common strategies.
+
+### 12.1 Write-Through
+
+In a write-through approach, the write path updates the backing data store and the cache as part of the same logical operation.
+
+A simplified flow is:
+
+```text
+Client → Application → Database + Cache
+```
+
+The operation is considered successful according to the application's defined success and failure rules.
+
+**Advantages:**
+
+- The cache can be updated immediately after a successful write.
+- Subsequent reads can see the new cached value when the write sequence succeeds.
+
+**Disadvantages:**
+
+- Writes can take longer because multiple systems must be updated.
+- One system may succeed while the other fails.
+- The application needs a policy for partial failures.
+
+Updating both systems does not automatically make the operation atomic. If strong guarantees are required, additional coordination or recovery mechanisms may be necessary.
+
+**When it helps:** Workloads where immediate cache freshness is important and the application can manage the dual-write failure cases.
+
+### 12.2 Write-Around
+
+In a write-around approach, writes go directly to the database and bypass the cache.
+
+A simplified flow is:
+
+```text
+Client → Application → Database
+```
+
+The cache is populated later when a read encounters a miss.
+
+**Advantages:**
+
+- Avoids caching data that might never be read.
+- Reduces cache pollution from write-heavy workloads.
+
+**Disadvantages:**
+
+- The first read after a write may miss the cache.
+- If an old cached entry exists and isn't invalidated or updated, stale data may be served.
+
+**When it helps:** Data that is written frequently but read infrequently, provided stale cached copies are handled correctly.
+
+### 12.3 Write-Back or Write-Behind
+
+In a write-back approach, the application writes to the cache first and persists the change to the backing database asynchronously later.
+
+A simplified flow is:
+
+```text
+Client → Application → Cache → Async database write
+```
+
+**Advantages:**
+
+- Can reduce write latency.
+- Can batch or combine writes, depending on the implementation.
+- Can reduce the number of immediate database writes.
+
+**Disadvantages:**
+
+- A cache failure before persistence can lose acknowledged changes.
+- Asynchronous persistence can lag behind.
+- Retries, ordering, duplicate processing, and recovery become important.
+
+**When it helps:** Workloads that can tolerate delayed persistence and have carefully designed durability and recovery guarantees.
+
+Important: write-back is not inherently appropriate for critical financial data or any workload where acknowledged writes must be durably stored immediately.
+
+These three strategies describe different write behaviors. They are not interchangeable, and none guarantees consistency without a clearly defined failure-handling design.
+
+## 13. Cache Invalidation: The Hard Part
+
+Let's return to the profile example.
+
+At 10:00 AM, the database and cache both contain:
+
+```text
+name = "Keshav"
+```
+
+At 10:01 AM, the user changes their name to:
+
+```text
+name = "Keshav Sharma"
+```
+
+The database now has the new name, but the cache still has the old one.
+
+The cache and database disagree.
+
+This is called **cache inconsistency**.
+
+How can we handle it?
+
+### Strategy 1: Update the Database, Then Invalidate the Cache
+
+A common cache-aside write pattern is:
+
+1. Update the database.
+2. Invalidate the relevant cache entry.
+3. Return success according to the application's write guarantees.
+
+The next read misses the cache, fetches the updated database value, and repopulates the cache.
+
+Why invalidate rather than update the cached value directly?
+
+Invalidation is often simpler because the application doesn't need to construct and maintain a second copy of the updated object in the cache.
+
+But there is a catch.
+
+What happens if the database update succeeds and the cache invalidation fails?
+
+The cache may continue serving stale data.
+
+Possible mitigations include finite TTLs, retries, durable invalidation events, and monitoring.
+
+### Strategy 2: Write-Through
+
+The application updates the backing store and cache during the write operation.
+
+This can keep the cached value fresh after a successful operation, but partial failures still need to be handled.
+
+### Strategy 3: TTL
+
+A finite TTL limits how long a stale entry remains valid when invalidation is missed.
+
+However, TTL is a fallback, not a guarantee of immediate consistency.
+
+### Strategy 4: Versioning
+
+The application associates a version number or timestamp with data.
+
+For example:
+
+- Version 7: Old profile.
+- Version 8: Updated profile.
+
+If the application can reliably establish which version is current, it can reject an outdated cached value or prevent an older refresh from overwriting a newer value.
+
+Versioning helps only when the application has a reliable way to compare versions and enforce the necessary ordering.
+
+### Strategy 5: Event-Driven Invalidation
+
+Imagine three application instances are running.
+
+One instance updates a product, but the other instances have local copies of the old product.
+
+An event can notify other instances that the product has changed.
+
+For example:
+
+```ts
+ProductUpdated(productId: 42)
+```
+
+Consumers receive the event and invalidate or refresh their local cache entries.
+
+This is especially useful when caches are distributed across application instances.
+
+However, event delivery must be designed carefully. Events can be delayed, duplicated, or lost if the system is not built to handle those possibilities.
+
+The important lesson: **cache invalidation is a correctness problem, not merely a cache-management operation.**
+
+## 14. Race Conditions in Caching
+
+Now let's examine a subtle bug.
+
+Suppose a request needs user 42's profile.
+
+Here's what happens:
+
+1. Request A misses the cache.
+2. Request A reads the old profile from the database.
+3. Request B updates the profile in the database.
+4. Request B invalidates the cache.
+5. Request A finishes its earlier database read.
+6. Request A writes the old profile into the cache.
+
+What is in the cache now?
+
+The old profile.
+
+Even though Request B successfully invalidated the cache, Request A repopulated it with stale data.
+
+This is a **race condition**: the correctness of the result depends on the timing and ordering of concurrent operations.
+
+Possible mitigations include:
+
+- Version checks.
+- Coordinating cache fills and invalidations.
+- Conditional writes that reject older versions.
+- Carefully designed locking or request-coalescing mechanisms.
+- Data-access patterns that enforce the necessary ordering guarantees.
+
+Simply deleting a key after a database update does not eliminate every possible race condition.
+
+This is one of the reasons production caching requires careful thought about concurrency.
+
+## 15. Cache Stampede: What If Thousands of Requests Miss at Once?
+
+Imagine your application caches a popular product page for eight minutes.
+
+For eight minutes, everything works smoothly.
+
+Then the cached entry expires.
+
+At almost exactly the same time, 10,000 users request the product.
+
+All 10,000 requests miss the cache.
+
+What happens next?
+
+Without protection, many or all of those requests might query the database and attempt to rebuild the same cached entry.
+
+The database suddenly receives thousands of duplicate queries for identical data.
+
+Latency increases. Connections and CPU become saturated. Other requests may begin failing.
+
+This is called a **cache stampede**, also known as a **thundering herd**.
+
+How do we prevent it?
+
+### 15.1 Locking or Singleflight
+
+Allow one request to regenerate the missing cache entry.
+
+Other requests can wait for the result, use a fallback, or follow another defined policy.
+
+This reduces duplicate work, but coordination itself must be designed carefully. Locks need timeouts and failure handling so a crashed refresher doesn't block everyone indefinitely.
+
+### 15.2 TTL Jitter
+
+Instead of assigning exactly the same expiration time to every entry, add a small random variation to their TTLs.
+
+For example, entries might expire after slightly different durations around a base TTL.
+
+This reduces the likelihood that many unrelated entries expire simultaneously.
+
+TTL jitter helps with synchronized expiration, but it does not solve every stampede involving one extremely popular key.
+
+### 15.3 Stale-While-Revalidate
+
+If the application has a stale copy that is still acceptable to serve, it can return that copy while refreshing it in the background.
+
+The user gets a fast response, and the application avoids making every request wait for regeneration.
+
+This approach requires a clear definition of how stale the data may be and which data is safe to serve stale.
+
+### 15.4 Background Refresh
+
+Refresh popular cache entries before they expire.
+
+Instead of waiting for the first user to encounter a miss, the application proactively regenerates the cached value.
+
+The trade-off is that background refresh consumes resources even when the data may not be requested again.
+
+Cache stampedes are about too many requests doing the same expensive work simultaneously.
+
+## 16. Hot Keys: When One Cache Entry Gets Too Much Traffic
+
+Now imagine your application caches millions of products.
+
+Most products receive a few requests each, but one product becomes extremely popular.
+
+Perhaps a celebrity mentions it, or a flash sale begins.
+
+Suddenly, millions of requests target the same cache key:
+
+```text
+product:42
+```
+
+That key is called a **hot key**.
+
+A hot key can overload a cache node, create a network bottleneck, or increase latency for other requests, depending on the cache architecture.
+
+What can we do?
+
+### Local In-Memory Caching
+
+Keep a short-lived copy of the popular value in each application instance.
+
+Many requests can then be served locally without reaching the shared cache.
+
+This is often called an L1 cache in a multi-level caching design.
+
+### Replication
+
+Where the cache architecture supports it, replicate frequently accessed data so read traffic can be distributed.
+
+Replication helps only when the actual request routing and cache architecture can spread the workload.
+
+### Key Distribution
+
+Distribute data across cache nodes when the system supports sharding.
+
+However, a single hot key may still map to one node. Sharding alone doesn't necessarily solve a hot-key problem.
+
+Replicating a hot value across multiple keys or nodes can spread traffic, but invalidation and consistency become more complicated.
+
+### Request Coalescing
+
+Combine concurrent requests for the same missing value so that one operation performs the expensive fetch and other requests reuse its result.
+
+### Rate Limiting
+
+Limit excessive requests from individual clients or sources where appropriate.
+
+Rate limiting can protect downstream services, but it doesn't necessarily solve legitimate high demand for a popular resource.
+
+And remember: TTL jitter can help prevent synchronized expiration, but it does not by itself solve sustained hot-key traffic.
+
+## 17. Cache Penetration and Cache Avalanche
+
+Two more problems are worth understanding.
+
+### Cache Penetration
+
+Imagine users repeatedly request a product ID that doesn't exist.
+
+For example:
+
+```text
+product:999999999
+```
+
+The cache doesn't contain the entry, and the database doesn't contain it either.
+
+Every request can become a database query.
+
+If an attacker or a bug generates huge numbers of such requests, the database may be overwhelmed.
+
+Possible mitigations:
+
+- Validate request parameters.
+- Apply rate limiting.
+- Cache negative results, such as a carefully defined "not found" result, for a short period.
+- Use a Bloom filter where appropriate to help identify values that definitely aren't present in a large dataset.
+
+Negative caching needs care. A previously nonexistent record might be created later, so the negative result should have an appropriate expiration or invalidation policy.
+
+### Cache Avalanche
+
+Imagine thousands of unrelated cache entries all expire at approximately the same time.
+
+Many requests now miss the cache simultaneously, increasing the load on the database or another backing service.
+
+This is a **cache avalanche**.
+
+Possible mitigations include:
+
+- TTL jitter.
+- Staggered expiration times.
+- Background refresh.
+- Capacity planning and fallback behavior.
+- Request coalescing for popular entries.
+
+A cache stampede often concerns a single popular key becoming unavailable, while an avalanche concerns many entries becoming unavailable around the same time. In practice, these problems can overlap.
+
+## 18. When Should We Cache?
+
+Now that we've explored the benefits and problems, how do we decide whether something deserves to be cached?
+
+Ask yourself five questions.
+
+### 1. Is the Data Requested Frequently?
+
+Frequently accessed data is often a good candidate because the same work can be avoided repeatedly.
+
+Examples: product details, popular posts, public configuration.
+
+### 2. Is Retrieving or Computing the Data Expensive?
+
+Complex queries, expensive aggregations, generated reports, and third-party API calls may benefit from caching.
+
+### 3. Can the Application Tolerate Stale Data?
+
+If every response must reflect the latest state, caching may require much stricter controls or may be inappropriate for that operation.
+
+### 4. Can the Cache Key Represent the Data Correctly?
+
+If responses vary by user, tenant, permission, locale, or query parameters, the key must account for the relevant differences.
+
+### 5. Is the Performance Improvement Worth the Added Complexity?
+
+A cache introduces memory use, invalidation logic, failure handling, monitoring, and operational cost.
+
+If the original operation is already cheap and rarely repeated, a cache may not help enough to justify those costs.
+
+### When Caching Is Often Useful
+
+- Frequently read data.
+- Expensive database queries.
+- Slow or expensive computations.
+- Third-party API responses.
+- Public content shared by many users.
+- Read-heavy workloads where the freshness requirements permit caching.
+
+### When to Be Cautious
+
+- Data that changes constantly.
+- Operations that require the latest authoritative state.
+- Rarely accessed data.
+- Cheap operations that are already fast.
+- Sensitive data without correct access control and isolation.
+- Workloads where stale values could create security or financial consequences.
+
+For example, caching a public blog post is usually easier to reason about than caching an account balance used to authorize a financial transaction.
+
+The right answer depends on the operation's correctness requirements.
+
+## 19. How Do We Measure Whether Caching Is Working?
+
+Suppose you've implemented a cache.
+
+How do you know whether it actually helps?
+
+You measure it.
+
+### Cache Hit Ratio
+
+The hit ratio tells you what proportion of cache lookups were hits.
+
+A simplified formula is:
+
+\[
+$$
+\text{Cache Hit Ratio} =
+\frac{\text{Cache Hits}}{\text{Total Cache Lookups}} \times 100
+$$
+\]
+
+Suppose you observe:
+
+- 8,000 hits.
+- 2,000 misses.
+
+Then:
+
+\[
+$$
+\text{Hit Ratio} =
+\frac{8,000}{10,000} \times 100 = 80\%
+$$
+\]
+
+An 80% hit ratio means that 80% of the measured lookups found an entry in the cache.
+
+But is 80% good?
+
+It depends.
+
+A high hit ratio doesn't guarantee lower end-to-end latency. Your cache may be slow, or the hits may concern cheap operations.
+
+Likewise, a low hit ratio doesn't automatically mean caching is useless. A cache might still help with a few extremely expensive operations.
+
+### Other Important Metrics
+
+- **Cache latency:** How long cache lookups take.
+- **Eviction rate:** How often entries are removed because of capacity or policy constraints.
+- **Memory usage:** How much cache capacity is being consumed.
+- **Expiration rate:** How frequently entries expire.
+- **Backend load:** Whether database queries, CPU usage, and downstream requests decrease.
+- **End-to-end latency:** Whether the user actually receives responses faster.
+- **Error rate:** Whether cache failures or fallback behavior affect requests.
+- **Staleness:** Whether cached values are being served within the application's freshness requirements.
+
+Measure before and after implementation. The goal isn't to maximize a cache metric for its own sake; the goal is to improve the system.
+
+## 20. What Happens If the Cache Goes Down?
+
+Imagine your distributed cache becomes unavailable.
+
+Your backend still receives requests.
+
+What should happen?
+
+There isn't one universal answer. The behavior depends on the operation and the system's requirements.
+
+For some applications, the backend can fall back to the database.
+
+For others, it might serve an acceptable stale value from a local cache.
+
+For sensitive operations, it might fail safely rather than use an untrusted or outdated cached value.
+
+However, blindly falling back to the database can be dangerous.
+
+Suppose the cache normally absorbs 95% of read traffic. If it goes down, that traffic may suddenly hit the database.
+
+The database might not have enough capacity to handle the surge.
+
+A robust design considers:
+
+- Connection and request timeouts.
+- Fallback behavior.
+- Circuit breakers where appropriate.
+- Load shedding or rate limiting.
+- Local caching when suitable.
+- Database capacity under cache failure.
+- Recovery and cache warm-up.
+
+Also, a cache should not be treated as the only durable copy of important data unless the system explicitly provides the necessary durability guarantees.
+
+A cache is part of your system's failure model, not just its performance model.
+
+## 21. Putting It All Together: Design a Cache for a Product API
+
+Let's use everything we've learned.
+
+Imagine you're building an e-commerce backend.
+
+Your API exposes:
+
+```http
+GET /products/42
+```
+
+The product is requested frequently, but its details don't change every second.
+
+How would you design the cache?
+
+### Read Path
+
+1. The backend receives the request.
+2. It builds a cache key: `product:42`.
+3. It checks the cache.
+4. If a valid entry exists, it returns the cached product.
+5. If the entry is missing, it queries the database.
+6. It stores the retrieved product in the cache with an appropriate TTL.
+7. It returns the product.
+
+### Update Path
+
+Suppose an administrator changes the product price.
+
+1. The backend validates the update.
+2. It updates the database.
+3. After a successful database update, it invalidates the relevant cached entry.
+4. If invalidation fails, the system applies its defined retry, expiration, and recovery strategy.
+5. The next read can retrieve the new product and repopulate the cache.
+
+### What If 10,000 Requests Arrive After Expiration?
+
+Consider request coalescing, background refresh, or stale-while-revalidate if serving a slightly old product is acceptable.
+
+### What If Product 42 Becomes Extremely Popular?
+
+Consider an L1 in-memory cache, replication where appropriate, and request coalescing.
+
+### What If the Cache Goes Down?
+
+Decide whether to fall back to the database, use a safe local copy, or reject certain requests. Ensure the fallback doesn't overload the database.
+
+### What If the Product Doesn't Exist?
+
+Consider short-lived negative caching and request validation.
+
+### What If the Product Price Must Always Be Authoritative?
+
+Do not assume a cached value is suitable for every business operation. A product page may tolerate a short-lived cached price, while checkout or payment processing may require stronger validation against authoritative data.
+
+Notice how we didn't begin by choosing a caching technology.
+
+We started by identifying the data, access pattern, correctness requirements, and failure scenarios.
+
+That's how engineers should approach caching.
+
+## 22. How Do We Decide When to Use Caching?
+
+Okay, so now we know what caching is, why we need it, and how it works.
+
+But let's say you're building a backend application, and you want to make it faster.
+
+Should you just add a cache?
+
+Not necessarily.
+
+First, we need to understand what is actually making our application slow.
+
+For example, maybe our database is taking too much time to return data. Or maybe we're calling the same external API again and again. Or perhaps we're doing the same expensive calculation for every request.
+
+These are different problems, and caching might help with some of them.
+
+So before adding a cache, let's ask ourselves a few simple questions.
+
+### Step 1: What Is Making Our Application Slow?
+
+Imagine you're building a website, and loading a particular page takes five seconds.
+
+Why is it taking five seconds?
+
+Maybe the database query is slow. Maybe the server is doing too much work. Or maybe we're waiting for another API to respond.
+
+We shouldn't just assume that adding a cache will fix everything.
+
+First, we need to find out where the delay is coming from.
+
+### Step 2: Are We Requesting the Same Data Again and Again?
+
+Let's say 1,000 users visit the same product page.
+
+The product information doesn't change very often, but our backend keeps fetching it from the database.
+
+Now, wouldn't it make sense to keep a copy of that information somewhere and reuse it?
+
+That's where caching can help.
+
+But if the data changes constantly or is rarely requested, caching might not be as useful.
+
+### Step 3: Where Should We Keep the Cached Data?
+
+Remember, caching doesn't happen only between our backend and database.
+
+We can cache data in the browser, use a CDN to store content closer to users, keep data in our application's memory, or use a separate cache that multiple backend servers can access.
+
+For example, if we want to cache images and other static files, a CDN might make sense.
+
+If we want to reuse frequently requested data across multiple backend servers, a shared cache might be useful.
+
+The important thing is to understand what we're trying to achieve before deciding where the cache should live.
+
+### Step 4: What Happens When the Data Changes?
+
+This is where things get interesting.
+
+Suppose we cache a product that costs ₹500.
+
+Later, the price changes to ₹600 in the database.
+
+But our cache still contains the old price.
+
+Now our application might show users incorrect information.
+
+So we need to decide what happens when the original data changes.
+
+Should we delete the cached copy? Update it? Or let it expire after a certain amount of time?
+
+There are different ways to handle this, and the right choice depends on how frequently the data changes and how fresh it needs to be.
+
+### Step 5: How Long Should We Keep the Data?
+
+Let's say we're caching a public blog post.
+
+If the post remains unchanged for a few minutes, serving the cached version might be perfectly fine.
+
+But what if we're dealing with information that must always reflect the latest state?
+
+We need to be much more careful.
+
+This is where TTL, or Time To Live, becomes useful. It tells us how long a cached entry should remain valid before it expires.
+
+We shouldn't choose an expiration time randomly. We should think about how often the data changes and whether serving an older version is acceptable.
+
+### Step 6: What If the Cache Stops Working?
+
+Imagine our backend normally gets data from the cache, but one day the cache becomes unavailable.
+
+What happens now?
+
+Can our backend fetch the data directly from the database? Can the database handle all those additional requests?
+
+If we haven't thought about this, our application might become slow or even start failing when the cache goes down.
+
+Caching makes some operations faster, but it also introduces another component that can fail.
+
+We need to think about that too.
+
+### Step 7: What Happens When Our Application Gets More Users?
+
+Suppose our application starts with just one backend server.
+
+We can keep some frequently used data in that server's memory.
+
+But later, our application grows, and we start running multiple backend servers.
+
+Now each server might have its own copy of the cached data.
+
+If one server updates its cache, the others might still have the old data.
+
+We may need a shared cache or another way to keep those copies sufficiently up to date.
+
+And if thousands of users suddenly request the same piece of data, we also need to think about how to prevent our database or cache from becoming overloaded.
+
+### Step 8: How Do We Know Whether Caching Actually Helped?
+
+Finally, we shouldn't assume that caching made our application faster just because we implemented it.
+
+We need to compare how the application performs before and after adding the cache.
+
+Are requests faster? Are we making fewer database queries? Is the database under less pressure?
+
+We can also look at the cache hit ratio, which tells us how often requested data is already available in the cache.
+
+If caching doesn't improve the problem we were trying to solve, we need to rethink our approach.
+
+The point isn't to add caching everywhere.
+
+The point is to understand the problem first and then decide whether caching is the right solution.
+
+## 23. Final Thoughts
+
+Let's go back to the beginning.
+
+Remember the books on your study desk?
+
+You kept the books you frequently needed close to you because you didn't want to walk into another room every time you wanted to read something.
+
+Caching works in a similar way.
+
+Instead of repeatedly fetching the same data or doing the same work, we keep a copy that we can reuse when needed.
+
+And that's the basic idea behind caching.
+
+But as we started exploring, we discovered that caching isn't just about storing data somewhere faster.
+
+We also need to think about where we store it, how long we keep it, what happens when the original data changes, and what happens when the cache stops working.
+
+We learned about cache hits, cache misses, TTL, eviction policies, different caching strategies, and problems like cache stampedes and hot keys.
+
+At first, these concepts might seem complicated. But when we connect them to the basic idea of avoiding repeated work, they start making more sense.
+
+And honestly, that's what makes learning backend engineering interesting.
+
+We start with a simple question: What is caching?
+
+Then we keep asking questions until we understand not just what it is, but why it exists and what problems it solves.
+
+Caching isn't about making everything faster by default. It's about avoiding unnecessary work while making sure our application still gives users the correct data.
+
+So the next time you build something and think about adding a cache, start with a few simple questions:
+
+- What work are we repeating?
+- Why are we repeating it?
+- Can we reuse the result?
+- What happens if the original data changes?
+- How long can we safely keep the cached copy?
+- What happens if the cache stops working?
+- Did caching actually make things better?
+
+You don't need to know every caching technology to start understanding caching.
+
+Start with the problem, understand the idea, and then learn how to implement it.
+
+**That's how we go from learning a concept to understanding how to use it in a real application.**
+
+---
+
+_Written by Keshavvv · October 13, 2026_

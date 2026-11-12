@@ -1,0 +1,618 @@
+---
+title: "Latency and Throughput in Backend Engineering: What Makes an API Actually Fast?"
+description: "A first-principles guide to understanding API performance, latency percentiles, tail latency, throughput, Little's Law, bottlenecks, and load testing."
+author: "Keshavv"
+publishedAt: "2026-10-16"
+category: "Backend Engineering"
+tags:
+  - Latency
+  - Throughput
+  - System Design
+  - Backend Engineering
+  - Performance Engineering
+readTime: "15 min"
+---
+
+# Latency and Throughput in Backend Engineering: What Makes an API Actually Fast?
+
+Have you ever heard about p99 latency? If not, let's understand it together.
+
+Imagine you have built an API. Most requests return in around 50 ms, everything looks fine, and your application feels fast.
+
+But occasionally, a request takes two seconds.
+
+Now imagine thousands of users are using your application. Some get an almost instant response, while others stare at a loading spinner.
+
+So, is your API actually fast?
+
+Looking at a single request won't tell us much. Even looking at the average response time can hide problems that affect real users.
+
+To understand what's happening, we need to look at three things: **latency, throughput, and latency percentiles.**
+
+Let's break them down from a backend engineer's perspective.
+
+## 1. What Exactly Is Latency?
+
+Latency is the time an operation takes to complete, measured between a defined starting point and endpoint.
+
+In backend engineering, we usually talk about request latency: the time between a client sending a request and receiving its response.
+
+Consider a simple example. A user opens the projects page of your application.
+
+The browser sends a request to your API. The backend authenticates the user, queries PostgreSQL, processes the results, and sends the response back.
+
+The request might follow this path:
+
+```text
+Client
+  |
+  | GET /api/projects
+  v
+Backend API
+  |
+  | Query database
+  v
+PostgreSQL
+  |
+  | Return results
+  v
+Backend API
+  |
+  | Send response
+  v
+Client
+```
+
+Suppose the entire request takes 180 ms. That's the request's latency, assuming we're measuring from when the client sends the request to when it receives the response.
+
+But here's something important: **latency isn't necessarily the time your code spends executing.**
+
+A request might spend time:
+
+- Waiting for network communication.
+- Waiting for a database connection.
+- Executing a slow SQL query.
+- Waiting for an external API.
+- Processing data inside your application.
+- Serializing the response.
+
+Your application code might execute in just 10 ms while the request takes 400 ms overall.
+
+That's why measuring latency is only the beginning. We also need to understand where that time is going.
+
+## 2. Why Average Latency Can Be Misleading
+
+Suppose we measure the response times of eight requests:
+
+| Request | Latency |
+|---|---:|
+| 1 | 45 ms |
+| 2 | 52 ms |
+| 3 | 48 ms |
+| 4 | 61 ms |
+| 5 | 900 ms |
+| 6 | 55 ms |
+| 7 | 49 ms |
+| 8 | 1,200 ms |
+
+Most requests finish in approximately 50 ms. Two, however, take close to a second or longer.
+
+The average latency is approximately 301 ms.
+
+If we only look at that number, we lose important information. We don't know whether every request takes roughly 301 ms or whether most are fast and a few are extremely slow.
+
+Those are two very different performance problems.
+
+In production, response times vary because of database locks, cache misses, network delays, resource contention, and other unpredictable events.
+
+This is where **latency percentiles** become useful.
+
+## 3. Understanding p50, p90, p95, and p99
+
+A latency percentile tells us the response-time threshold within which a given percentage of measured requests completed.
+
+Imagine collecting 10,000 request durations and sorting them from fastest to slowest.
+
+Let's understand the most useful percentiles.
+
+### p50 — The Typical Request
+
+p50, also known as the median latency, tells us how long a typical request takes to complete.
+
+Suppose your API has a p50 latency of 80 ms. This means 50% of measured requests complete in 80 ms or less, while the remaining 50% take 80 ms or longer.
+
+Think of p50 as a baseline for understanding the everyday experience of your users. It helps you determine whether your API feels responsive under normal conditions.
+
+But here's the catch: a good median doesn't guarantee a consistently fast API.
+
+Your API might respond to most requests in just 80 ms while a smaller group of users waits 500 ms, 2 seconds, or even longer. The median barely reflects those slow requests.
+
+That's why p50 is useful for understanding typical performance, but insufficient for understanding the full user experience. To see how your slowest requests behave, we need to look at higher percentiles, such as p95 and p99.
+
+### p90 — When Slower Requests Become Noticeable
+
+p90 latency tells us how long 90% of requests take to complete.
+
+If your API has a p90 latency of 180 ms, approximately 90% of requests finish in 180 ms or less. The remaining 10% take longer.
+
+But why should we care about that remaining 10%?
+
+Imagine you're building a search API. Most searches are straightforward and return results quickly. Others involve expensive database queries, large result sets, or additional processing.
+
+Your average latency might look perfectly acceptable, even while a significant portion of users experience noticeably slower responses.
+
+This is where p90 becomes useful. It helps us look beyond the typical request and understand how slower requests affect the overall experience.
+
+If p50 remains stable but p90 starts increasing, it could indicate that a subset of requests is becoming slower. That gives us a reason to investigate what those requests have in common and where the extra latency comes from.
+
+### p95 — A Closer Look at Slow Requests
+
+p95 latency tells us the response time within which approximately 95% of requests complete. The remaining 5% take longer.
+
+For example, if your API has a p95 latency of 300 ms, approximately 95% of requests finish in 300 ms or less, while the slowest 5% exceed that threshold.
+
+Why does this matter in production?
+
+Imagine your dashboard loads quickly for most users, but certain requests take noticeably longer because they retrieve excessive amounts of data, execute inefficient database queries, or process unnecessarily large result sets.
+
+Your median latency might look excellent, hiding these problems entirely. But p95 brings more of those slower requests into view.
+
+The important distinction is this: a healthy p50 doesn't necessarily mean a healthy p95.
+
+When p50 stays low but p95 climbs, it suggests that at least some requests are experiencing significantly higher latency. Investigating that gap can help you identify inefficient queries, uneven workloads, or other performance bottlenecks before they become a widespread problem.
+
+### p99 — Understanding Tail Latency
+
+Now we get to the interesting part: **tail latency**.
+
+If your API has a p99 latency of 1,000 ms, approximately 99% of requests complete within one second, while the slowest 1% take longer.
+
+One percent might sound insignificant. But let's put that number into perspective.
+
+Imagine your API handles one million requests per day.
+
+- 99% — approximately 990,000 requests complete within one second.
+- 1% — approximately 10,000 requests take longer than one second.
+
+That's 10,000 requests experiencing slower responses every day, even though your API might look perfectly healthy when you examine its median latency.
+
+And those requests don't exist only as numbers on a dashboard. They represent real users waiting for a page to load, a search result to appear, or an operation to finish.
+
+So, why do these requests take so long?
+
+They might encounter slow database queries, resource contention, overloaded services, lock contention, network delays, or long queues waiting for available workers.
+
+These problems may affect only a small fraction of requests, making them easy to miss when looking at averages or medians.
+
+That's why p99 matters. It helps us understand the slow end of the latency distribution, where performance problems can hide even when most requests complete quickly.
+
+At scale, optimizing an API isn't just about making the typical request faster. It's also about understanding why some requests take disproportionately longer than others.
+
+That is the essence of tail-latency analysis.
+
+Here's a quick comparison:
+
+| Percentile | What it tells us |
+|---|---|
+| p50 | 50% of requests complete within this time |
+| p90 | 90% of requests complete within this time |
+| p95 | 95% of requests complete within this time |
+| p99 | 99% of requests complete within this time |
+
+These numbers are illustrative, but look at the difference between p50 and p99.
+
+The median request completes in just 80 ms, while the p99 latency reaches 1,000 ms. In other words, the API responds quickly to most requests, yet a small fraction take significantly longer.
+
+The problem isn't necessarily that the API is slow. It's that its response times vary considerably.
+
+One important distinction: latency percentiles describe the distribution of measured requests, not individual users.
+
+We cannot conclude that exactly 1% of users are affected. A single user may generate many requests, and the same users won't necessarily experience the slowest responses every time.
+
+To understand who or what is affected, we need to investigate the underlying requests and the conditions that make some of them slower than others.
+
+## 4. Why Does p99 Latency Become So High?
+
+To understand why p99 latency increases, let's look at a realistic backend example.
+
+Imagine you're building a projects API. Whenever a user requests their projects, the application performs three operations:
+
+1. Authenticate the user.
+2. Fetch their projects from PostgreSQL.
+3. Retrieve additional information from an external service.
+
+Under normal conditions, everything works as expected. Authentication is quick, the database query completes efficiently, and the external service responds without significant delay.
+
+Most requests finish within 100 ms.
+
+But occasionally, something goes wrong.
+
+A database query might take 700 ms instead of its usual 30 ms. Perhaps it has to wait for a lock, scan too many rows, or wait for an available connection from the pool.
+
+The application cannot return the complete response until the required database operation finishes.
+
+Suddenly, a request that normally takes 100 ms might take close to one second.
+
+Notice what's happening here: the application doesn't have to become slower for every request for p99 latency to increase. A relatively small number of unusually slow requests can push the tail of the latency distribution much higher.
+
+Let's examine the common causes.
+
+### Common Causes of High p99 Latency
+
+**1. Slow database queries**
+
+A query that performs well with a small dataset might become expensive as the data grows. An unsuitable execution plan, a missing index, or retrieving unnecessary rows can increase query execution time.
+
+**2. Connection pool exhaustion**
+
+Your application may have a limited number of database connections. When all connections are busy, incoming requests must wait for one to become available.
+
+Even if the SQL query itself executes in 20 ms, the request could spend hundreds of milliseconds waiting for a connection before the query even begins.
+
+**3. Cache misses**
+
+A cache hit might return data in a few milliseconds, while a cache miss requires a database query or another expensive operation.
+
+If cache misses become more frequent — or trigger additional database load — some requests may take significantly longer than others.
+
+**4. Network delays**
+
+Your API might depend on an external service that occasionally responds slowly because of network congestion, service-side load, or other transient problems.
+
+Even when your own application is healthy, a slow dependency can increase end-to-end latency.
+
+**5. Resource contention**
+
+Multiple requests may compete for CPU time, memory, disk I/O, database locks, or other shared resources. Under heavy contention, operations that usually finish quickly may have to wait.
+
+**6. Queueing**
+
+When requests arrive faster than the system can process them, they begin waiting for available workers, connections, or other resources.
+
+That waiting time contributes to latency even before the actual processing begins.
+
+### The Important Distinction
+
+Different bottlenecks can produce the same symptom: high p99 latency. But the right solution depends on what's actually causing the delay.
+
+For example, increasing the database connection pool might seem like an obvious fix when requests are waiting for connections. However, if the database is already struggling with CPU or I/O pressure, allowing more concurrent queries could increase contention and make latency even worse.
+
+High p99 tells us that the slow end of the request distribution is experiencing delays. It doesn't tell us where those delays originate.
+
+To find the root cause, we need evidence from multiple layers of the system:
+
+- **Distributed traces** help identify which operation or downstream service is contributing the most latency.
+- **Database timings** help distinguish slow query execution from time spent waiting.
+- **Connection-pool metrics** reveal whether requests are waiting for available connections.
+- **Cache hit rates** help us understand how often requests fall back to slower data sources.
+- **Resource utilization** reveals potential CPU, memory, and I/O bottlenecks.
+- **Queue depth and wait time** show whether work is accumulating faster than the system can process it.
+
+The objective isn't to make random optimizations and hope the numbers improve.
+
+It's to identify where the time is actually being spent, understand why that delay occurs, and address the specific bottleneck responsible for the slow requests.
+
+### Why Distributed Systems Make This Harder
+
+Imagine a page that needs responses from five independent services before it can finish loading.
+
+Even if each service is usually fast, the page has to wait for the slowest required response.
+
+Suppose each service has a 99% probability of finishing within a particular latency target. If their timings are independent, the probability that all five finish within that target is:
+
+\[
+$$
+0.99^5 \approx 95.1\%
+$$
+\]
+
+Each service individually meets the target 99% of the time, but the combined operation meets all five targets only about 95.1% of the time.
+
+This is a simplified example; real service delays may be correlated, and systems can use techniques such as parallel execution, caching, and fallbacks.
+
+Still, the lesson is important: a system composed of multiple dependencies can experience worse end-to-end latency than its individual components suggest.
+
+## 5. How Do We Actually Reduce Latency?
+
+There is no universal optimization that makes every API faster.
+
+The right solution depends on where the request spends its time.
+
+### Measure Before Optimizing
+
+Suppose an API takes 500 ms to respond.
+
+After investigating, we discover:
+
+| Operation | Time |
+|---|---:|
+| Application logic | 20 ms |
+| Database query | 350 ms |
+| External API | 80 ms |
+| Other overhead | 50 ms |
+| **Total** | **500 ms** |
+
+These timings are illustrative.
+
+Would optimizing a small application function that takes 5 ms make a meaningful difference?
+
+Probably not. The database query is the obvious place to investigate first.
+
+Application logs, metrics, database query analysis, and distributed tracing help us identify where time is being spent.
+
+The principle is simple: **measure first, identify the bottleneck, and then optimize.**
+
+### Optimize Database Queries
+
+Suppose your `projects` table contains millions of records, and you frequently retrieve the latest projects belonging to a particular user.
+
+```sql
+SELECT id, title, created_at
+FROM projects
+WHERE owner_id = 42
+ORDER BY created_at DESC
+LIMIT 20;
+```
+
+Without a suitable index, PostgreSQL may need to examine many rows and perform additional sorting work.
+
+An index matching the filtering and ordering pattern could help:
+
+```sql
+CREATE INDEX idx_projects_owner_created
+ON projects (owner_id, created_at DESC);
+```
+
+Whether this index is actually useful depends on the query plan, table structure, and workload. Verify the impact using `EXPLAIN ANALYZE`.
+
+Other improvements include avoiding unnecessary queries, limiting result sizes, and preventing N+1 query problems.
+
+The goal isn't to add indexes everywhere. It's to reduce unnecessary database work without introducing excessive storage or write overhead.
+
+### Use Caching Where It Makes Sense
+
+Imagine your application repeatedly fetches the same public project information.
+
+Instead of querying PostgreSQL for every request, you could cache reusable results in Redis.
+
+```text
+Request
+   |
+   v
+Check cache
+   |
+   +---- Cache hit ----> Return result
+   |
+   +---- Cache miss
+             |
+             v
+        Query database
+             |
+             v
+        Store result
+             |
+             v
+        Return result
+```
+
+When a valid cache entry exists, the backend avoids repeating the database query.
+
+This can reduce latency and database load.
+
+However, caching introduces trade-offs. Data can become stale, invalidation can be difficult, and a burst of cache misses can overwhelm the database.
+
+Use caching when it addresses a measured bottleneck and the application can tolerate the consistency trade-offs.
+
+### Avoid Unnecessary Network Calls
+
+Every network call introduces latency and another dependency that can become slow.
+
+If an API makes five sequential calls to different services, their durations can accumulate.
+
+Depending on the requirements, we might:
+
+- Remove unnecessary calls.
+- Combine related operations.
+- Reuse network connections.
+- Execute independent operations concurrently.
+
+But concurrency must be controlled. Sending too many simultaneous requests can overwhelm a downstream service and make latency worse.
+
+### Set Sensible Timeouts
+
+A backend should not wait indefinitely for a dependency.
+
+If an external API stops responding, requests waiting on it may occupy resources and contribute to growing queues.
+
+Timeouts limit how long the application is willing to wait for an operation. They should fit within the overall request's time budget, leaving enough time for any remaining work.
+
+Retries need care, too. Repeatedly retrying failed requests against an overloaded service can increase the load and make the problem worse.
+
+### Move Nonessential Work Out of the Request Path
+
+Not every operation needs to finish before the user receives an HTTP response.
+
+For example, when a user creates a project, the backend might need to:
+
+- Save the project.
+- Send an email.
+- Notify followers.
+
+Saving the project may be essential before returning success, while sending notifications might not be.
+
+We can process those notifications asynchronously using a queue and background workers.
+
+The request can return after the essential work finishes, while workers handle the rest.
+
+This reduces the work required during the HTTP request, but it doesn't make the total work disappear. It also introduces concerns such as retries, duplicate processing, and delayed delivery.
+
+For suitable workloads, asynchronous processing can improve responsiveness and help the application handle more work.
+
+## 6. What Is Throughput?
+
+We've talked about how long a request takes. Now let's talk about how much work a system can complete.
+
+**Throughput is the amount of work a system successfully processes over a period of time.**
+
+For APIs, it is often measured in requests per second (RPS).
+
+Suppose your backend successfully processes 1,000 requests in one second. Its throughput during that interval is 1,000 requests per second.
+
+Now imagine incoming traffic increases to 5,000 requests per second.
+
+Can the server handle it?
+
+That depends on the capacity of the application, database, and other dependencies.
+
+If the system can successfully process only 2,000 requests per second, the remaining requests may wait, time out, fail, or be rejected.
+
+This distinction matters:
+
+- **Incoming request rate:** How quickly requests arrive.
+- **Successful throughput:** How quickly the system completes requests successfully.
+
+They are not necessarily the same.
+
+A system receiving 5,000 requests per second isn't necessarily processing 5,000 requests per second.
+
+## 7. How Latency and Throughput Affect Each Other
+
+Latency and throughput measure different things, but they're closely related.
+
+Imagine a server that handles requests one at a time. Each request takes 100 ms, and the server is occupied for that entire duration.
+
+Its theoretical maximum throughput is approximately:
+
+\[
+$$
+\frac{1}{0.1} = 10 \text{ requests/second}
+$$
+\]
+
+Now suppose the application can safely process multiple requests concurrently.
+
+While one request waits for PostgreSQL, another can make progress. Throughput may increase substantially because the server doesn't need to remain idle while waiting for I/O.
+
+But concurrency has limits.
+
+If too many requests compete for the same database connections, CPU, memory, or external service, latency can rise. Eventually, adding more concurrency may stop increasing throughput or even reduce it.
+
+This is one reason backend engineering isn't simply about making everything concurrent. It's about finding the amount of concurrency the system can sustain.
+
+### Understanding Little's Law
+
+A useful relationship in queueing theory is **Little's Law**:
+
+\[
+$$
+L = \lambda \times W
+$$
+\]
+
+Where:
+
+- \(L\) is the average number of requests in the system.
+$$
+- \(\lambda\) is the average throughput.
+$$
+- \(W\) is the average time each request spends in the system.
+
+Suppose an API processes 200 requests per second, and the average request spends 0.25 seconds in the system.
+
+\[
+$$
+L = 200 \times 0.25 = 50
+$$
+\]
+
+That means approximately 50 requests are in the system on average.
+
+Now imagine average latency increases to one second while throughput remains at 200 requests per second.
+
+\[
+$$
+L = 200 \times 1 = 200
+$$
+\]
+
+The average number of requests in the system rises to 200.
+
+More requests are now occupying resources at the same throughput.
+
+If the system is already under pressure, this can contribute to a feedback loop: slow dependencies cause requests to accumulate, accumulated work consumes resources, and the additional pressure creates further delays.
+
+That's why monitoring latency, throughput, and the amount of in-flight work together gives us a much clearer picture than any single metric.
+
+## 8. How Do We Improve Throughput?
+
+Improving throughput means enabling the system to complete more useful work without exceeding its resource limits.
+
+Some common approaches include:
+
+**Find the bottleneck.**
+
+If PostgreSQL is already the limiting component, adding more API servers may not increase total throughput.
+
+**Improve resource utilization.**
+
+Appropriate concurrency helps applications make progress while waiting for I/O, provided downstream dependencies can handle the additional load.
+
+**Batch operations.**
+
+Grouping suitable operations can reduce repeated network and database overhead.
+
+**Use background workers.**
+
+Independent tasks can be processed outside the HTTP request path, allowing request handlers to focus on essential work.
+
+**Scale horizontally.**
+
+Multiple application instances can increase capacity when the workload is distributable and shared dependencies can support the additional load.
+
+**Apply backpressure.**
+
+When incoming work exceeds available capacity, control how much work the system accepts rather than allowing queues and memory usage to grow without limit.
+
+The important thing is to understand what is limiting the system. More servers, workers, or concurrency won't help indefinitely if another component has already reached its capacity.
+
+## 9. How Do We Know Whether Our API Is Actually Fast?
+
+A successful request on your local machine doesn't tell you how the API behaves under heavy traffic.
+
+That's where **load testing** comes in.
+
+A load test helps us observe how a system behaves as the request rate increases. We can monitor:
+
+- Successful requests per second.
+- p50, p90, p95, and p99 latency.
+- Error rates and timeouts.
+- CPU and memory utilization.
+- Database query times.
+- Connection pool waits.
+- Queue depth and downstream service latency.
+
+Imagine your API performs well at 100 requests per second. As the load approaches 800 requests per second, p99 latency suddenly rises.
+
+That tells us the slow end of the latency distribution is getting worse under load. It doesn't tell us the exact cause, so we investigate the supporting metrics to identify the bottleneck.
+
+Perhaps the database connection pool is saturated. Perhaps a downstream service is slowing down. Perhaps requests are accumulating faster than workers can process them.
+
+A good load test helps us find where performance begins to degrade, understand why it happens, and verify whether an optimization actually improves the result.
+
+## Final Thoughts
+
+Latency tells us how long requests take to complete. Throughput tells us how much work the system completes over time.
+
+Percentiles such as p90, p95, and p99 help us understand how consistent our API's response times are, especially when a small percentage of requests take much longer than the rest.
+
+As applications grow, the challenge isn't simply making individual requests faster. It's maintaining acceptable latency while handling increasing traffic, managing limited resources, and dealing with slow dependencies.
+
+The most useful habit is to measure performance, identify the bottleneck, make a targeted change, and measure again.
+
+Because building a fast API isn't just about making the happy path faster.
+
+**It's about understanding what happens when the system is under pressure — and making sure it continues to behave well.**
+
+---
+
+*Written by Keshavvv · October 16, 2026*

@@ -1,0 +1,265 @@
+---
+title: "LLD from Scratch #01: My First Step into Low-Level Design"
+description: "My first attempt at understanding Low-Level Design, responsibilities, components, and how to structure software before writing code."
+author: "Keshavv"
+publishedAt: "2026-11-06"
+tags:
+  - Software Engineering
+  - Backend Development
+  - LLD
+  - HLD vs LLD
+readingTime: "6 min"
+---
+
+# LLD from Scratch #01: My First Step into Low-Level Design
+
+I’ve been learning backend development for a while now. I’ve worked with APIs, databases, services, and a lot of backend concepts.
+
+But recently, I realised something: I could build things, but I wasn’t confident about how to structure them.
+
+Questions started coming to my mind:
+
+- How should I divide responsibilities between classes?
+- Why do we create separate services and repositories?
+- How do I design something before jumping into code?
+
+That’s where my journey into Low-Level Design (LLD) begins. This is my first attempt at understanding it.
+
+## 1. What Is Low-Level Design (LLD)?
+
+Before jumping into the technical definition, let’s understand LLD through a practical example.
+
+Imagine we’re building an online course platform where students should be able to:
+
+- Browse available courses.
+- Enroll in courses.
+- Access lessons.
+- Track their learning progress.
+
+Now, suppose we’re implementing the enrollment feature. The obvious first step might be to create an API endpoint:
+
+> `POST /api/courses/:courseId/enroll`
+
+But before writing that endpoint, we need to think about how the feature should actually work.
+
+Consider a few questions:
+
+- Where should the enrollment logic live? Should it be handled directly inside the API route, or should we have a separate service responsible for it?
+- Who handles validation? Which component checks whether the student is already enrolled?
+- Who interacts with the database? Should the business logic communicate directly with the database, or should that responsibility belong to a separate component?
+- How should failures be handled? What happens if the student is already enrolled or the database operation fails?
+- How should the components communicate? How does the API layer interact with the business logic and database layer?
+
+These aren’t implementation questions about syntax or frameworks. They’re questions about the structure and responsibilities of our software.
+
+And that’s exactly where Low-Level Design comes into play.
+
+Low-Level Design (LLD) is the process of defining the internal structure of a software system by identifying its components, assigning responsibilities to them, defining their relationships, and establishing how they interact with one another before implementation.
+
+In simpler terms, LLD helps us answer three fundamental questions:
+
+1. What components do we need?
+2. What responsibility should each component have?
+3. How should these components collaborate to achieve the desired functionality?
+
+## LLD vs. HLD
+
+You might also come across another term: High-Level Design (HLD).
+
+Both are important parts of software design, but they operate at different levels of abstraction.
+
+Think of building a house:
+
+- **HLD** is the architectural blueprint. It defines the overall structure: how many floors the house will have, where the rooms will be, and how the major areas connect.
+- **LLD** is the detailed construction plan. It defines what goes inside each room, where the electrical switches go, how the plumbing connects, and how individual components fit together.
+
+Similarly, in software engineering:
+
+- **HLD** focuses on the overall system architecture — services, databases, communication patterns, scalability, and infrastructure.
+- **LLD** focuses on the internal design of components — classes, interfaces, methods, responsibilities, relationships, and interactions.
+
+The key idea is simple: HLD defines the bigger picture; LLD defines how the individual pieces of that picture are designed and work together.
+
+## 2. Why Do We Need LLD?
+
+Let’s build the enrollment feature the way many of us (including me) would start.
+
+```ts
+// db and emailClient are placeholders for this example
+app.post("/enroll", async (req, res) => {
+  const { userId, courseId } = req.body;
+
+  const user = await db.users.findOne({ id: userId });
+  if (!user) return res.status(404).send("User not found");
+
+  const course = await db.courses.findOne({ id: courseId });
+  if (!course) return res.status(404).send("Course not found");
+
+  const existing = await db.enrollments.findOne({
+    userId,
+    courseId,
+  });
+
+  if (existing) return res.status(400).send("Already enrolled");
+
+  await db.enrollments.insert({ userId, courseId });
+
+  await emailClient.send(
+    user.email,
+    `Welcome to ${course.title}`
+  );
+
+  res.send("Enrolled!");
+});
+```
+
+At first glance, this looks fine. It works. But now the requirements start arriving:
+
+- Payment verification
+- Enrollment limits
+- Progress tracking
+- WhatsApp notifications as well as email
+
+Every new feature means reopening this one handler. It checks users, talks to the database, applies business rules and sends emails, all in one place. Change one thing and you risk breaking another.
+
+The problem isn’t that the code is wrong. The problem is that one piece of code has too many responsibilities.
+
+### Thinking in responsibilities
+
+Instead, let’s ask: what are the real things in this system, and what is each one responsible for?
+
+First, an object representing an enrollment:
+
+```ts
+class Enrollment {
+  constructor(
+    public readonly userId: string,
+    public readonly courseId: string
+  ) {}
+}
+```
+
+This represents the link between a student and a course.
+
+Next, who stores and retrieves enrollments? A repository:
+
+```ts
+class EnrollmentRepository {
+  private enrollments: Enrollment[] = [];
+
+  async findByUserAndCourse(
+    userId: string,
+    courseId: string
+  ) {
+    return this.enrollments.find(
+      (e) => e.userId === userId && e.courseId === courseId
+    );
+  }
+
+  async create(enrollment: Enrollment) {
+    this.enrollments.push(enrollment);
+  }
+}
+```
+
+Finally, who decides whether a student can enroll? A service:
+
+```ts
+class EnrollmentService {
+  constructor(
+    private readonly enrollmentRepository: EnrollmentRepository
+  ) {}
+
+  async enrollStudent(userId: string, courseId: string) {
+    const existing =
+      await this.enrollmentRepository.findByUserAndCourse(
+        userId,
+        courseId
+      );
+
+    if (existing) {
+      throw new Error("Already enrolled");
+    }
+
+    const enrollment = new Enrollment(userId, courseId);
+
+    await this.enrollmentRepository.create(enrollment);
+
+    return enrollment;
+  }
+}
+```
+
+Now we have three pieces, each with one job:
+
+- `Enrollment` represents the enrollment itself.
+- `EnrollmentRepository` handles storing and retrieving enrollment data.
+- `EnrollmentService` coordinates the operation and holds the business rules.
+
+Here is how they relate:
+
+### The payoff
+
+Remember the new requirement, notifications? Now we add a `NotificationService` and make one extra call inside `enrollStudent`:
+
+```ts
+await this.notificationService.sendWelcome(userId, courseId);
+```
+
+We didn’t touch `Enrollment`. We didn’t touch `EnrollmentRepository`. The change went exactly where it belonged.
+
+That is the whole idea. Good design isn’t only about code that works. It’s about deciding where each piece of logic belongs, so change stays cheap.
+
+> **Note:** This is an in-memory learning example. A real enrollment system would also need database transactions, validation of the student and course, and concurrency handling.
+
+## 3. Is LLD Just About Classes and Objects?
+
+When I first started learning Low-Level Design, I assumed it was primarily about writing classes and objects. I thought that if I understood OOP and knew how to structure classes, I would understand LLD.
+
+But there’s much more to it.
+
+LLD is not simply about creating classes; it’s about making thoughtful design decisions that help us build software that is maintainable, extensible, and easier to understand.
+
+Classes and objects are just one part of the bigger picture. To understand LLD properly, we need to explore several interconnected concepts.
+
+Here is what I plan to cover throughout this series:
+
+- **Object-Oriented Programming (OOP):** Understanding classes, objects, encapsulation, inheritance, and polymorphism, along with how they help us structure software.
+- **Object Relationships:** Understanding association, aggregation, and composition, and how different objects relate to and depend on one another.
+- **SOLID Principles:** Five fundamental design principles that help us create flexible, maintainable, and loosely coupled software.
+- **Design Patterns:** Reusable approaches to commonly occurring software design problems and the trade-offs involved in applying them.
+- **UML Diagrams:** Learning to visualize and communicate software designs using diagrams such as class diagrams and sequence diagrams.
+
+However, I don’t want this series to become another collection of definitions that we memorize and forget.
+
+I want to understand why these concepts exist, what problems they solve, and when applying them actually makes sense.
+
+Because knowing what inheritance means is one thing; knowing whether inheritance is the right choice for a particular problem is an entirely different skill.
+
+The goal isn’t to memorize design principles or patterns. It’s to develop the ability to think about software design and make better engineering decisions.
+
+## 4. My First Takeaway
+
+The biggest thing I’ve realised so far: I shouldn’t rush into writing code.
+
+Before creating a class, I want to ask:
+
+- What is this class responsible for?
+- Does it have too many responsibilities?
+- Which objects does it interact with?
+- Does it own something, or does it simply use something?
+- What happens when requirements change?
+
+These questions look simple, but they can change how we approach software.
+
+I’m still learning, and I’ll probably misunderstand a few things along the way. That’s the point of this series. I want to document what I learn, what confuses me, the mistakes I make, and how my understanding evolves. Not as an expert, but as a developer learning by thinking, reading, questioning and building.
+
+This is just the beginning.
+
+**Next up:** LLD from Scratch #02 — Understanding Objects, Classes, and Responsibilities.
+
+---
+
+*Written by Keshavvv*
+
+*Learning backend by building it.*

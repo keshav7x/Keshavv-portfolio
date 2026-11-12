@@ -1,0 +1,1612 @@
+---
+title: "LLD from Scratch #04: Understanding the Four Pillars of OOP — Encapsulation"
+description: "Understand encapsulation from first principles: state ownership, information hiding, invariants, access modifiers, defensive copying, and how encapsulation shapes real backend systems."
+author: "Keshavv"
+publishedAt: "2026-11-10"
+readingTime: "20 min"
+tags:
+  - LLD
+  - Encapsulation
+  - OOP
+  - Backend Development
+  - TypeScript
+---
+
+# LLD from Scratch #04: Understanding the Four Pillars of OOP — Encapsulation
+
+In #03, we learned what classes, objects, and constructors are, and why a God class becomes a problem as an application grows.
+
+Today, we're going to understand the first pillar of OOP: **Encapsulation**.
+
+But we won't stop at making properties private. We'll understand why objects need control over their own state, how to protect business rules, and how this principle influences the design of real backend systems.
+
+## 1. Start With a Real-World Problem
+
+Imagine you're building the backend of a digital wallet application.
+
+Users should be able to:
+
+- Deposit money into their wallets.
+- Withdraw money.
+- Check their current balance.
+- View their transaction history.
+
+Let's start with a simple procedural implementation.
+
+```ts
+// wallet.ts
+
+const wallet = {
+  owner: "Keshav",
+  balance: 5000,
+  transactions: [] as string[],
+};
+
+function deposit(wallet: typeof wallet, amount: number) {
+  wallet.balance += amount;
+  wallet.transactions.push(`Deposited ${amount}`);
+}
+
+function withdraw(wallet: typeof wallet, amount: number) {
+  wallet.balance -= amount;
+  wallet.transactions.push(`Withdrawn ${amount}`);
+}
+```
+
+Nothing complicated here.
+
+We have an object containing data and two functions that operate on that data.
+
+Let's use it:
+
+```ts
+deposit(wallet, 1000);
+withdraw(wallet, 500);
+
+console.log(wallet.balance); // 5500
+```
+
+Everything works.
+
+But now imagine the application grows.
+
+You have five different modules:
+
+- Checkout handles purchases.
+- Refund handles refunds.
+- Admin handles wallet adjustments.
+- Reports handles transaction history.
+- Wallet handles deposits and withdrawals.
+
+Different developers start working on different parts of the application.
+
+Soon, someone writes this:
+
+```ts
+// checkout.ts
+
+wallet.balance -= 700;
+```
+
+The developer forgot to record the transaction.
+
+Another developer writes:
+
+```ts
+// refunds.ts
+
+wallet.balance += "200" as any;
+```
+
+Now JavaScript performs string concatenation instead of numerical addition.
+
+The balance might become `"5500200"`.
+
+Someone else writes:
+
+```ts
+// admin.ts
+
+wallet.balance = -99999;
+```
+
+Now the wallet has a negative balance.
+
+And finally:
+
+```ts
+// reports.ts
+
+wallet.transactions = [];
+```
+
+The entire transaction history disappears.
+
+Notice something interesting.
+
+None of these developers necessarily intended to break the wallet.
+
+They simply had unrestricted access to its internal data.
+
+**The problem isn't that the developers wrote bad code. The problem is that the design allows any part of the application to violate the wallet's rules.**
+
+### 1.1 What Exactly Went Wrong?
+
+Look at our original implementation:
+
+```ts
+const wallet = {
+  owner: "Keshav",
+  balance: 5000,
+  transactions: [],
+};
+
+function withdraw(wallet, amount) {
+  wallet.balance -= amount;
+}
+```
+
+There are two separate things:
+
+- The data lives inside `wallet`.
+- The behavior that modifies the data lives outside `wallet`.
+
+This creates a problem: the wallet doesn't control how its own state changes.
+
+Any function that receives the wallet object can potentially modify its properties.
+
+There is no single authority responsible for protecting the wallet's rules.
+
+This is the problem we want to solve.
+
+## 2. What Exactly Is Encapsulation?
+
+Let's understand the definition before writing more code.
+
+**Encapsulation is the OOP principle of combining an object's state and the behavior that operates on that state, while controlling access to its internal implementation.**
+
+There are two closely related ideas here.
+
+### 2.1 Bundling
+
+Bundling means keeping related data and behavior together.
+
+Instead of having a separate wallet object and unrelated deposit/withdraw functions, we put them inside a `Wallet` class.
+
+```ts
+class Wallet {
+  balance = 5000;
+
+  deposit(amount: number) {
+    this.balance += amount;
+  }
+
+  withdraw(amount: number) {
+    this.balance -= amount;
+  }
+}
+```
+
+Now the data and the operations that modify it belong to the same abstraction.
+
+This gives us a natural place to put wallet-related behavior.
+
+But is this enough?
+
+No.
+
+The `balance` property is still public.
+
+Anyone can write:
+
+```ts
+const wallet = new Wallet();
+
+wallet.balance = -99999;
+```
+
+We bundled the data and behavior, but we didn't control access to the data.
+
+### 2.2 Information Hiding
+
+Information hiding means keeping internal implementation details inaccessible to outside code unless there is a good reason to expose them.
+
+The outside world shouldn't need to know:
+
+- How the wallet stores its balance.
+- How transactions are recorded.
+- What internal calculations happen during withdrawal.
+- How the wallet validates a deposit.
+
+It should only know which operations the wallet supports.
+
+For example:
+
+```ts
+wallet.deposit(1000);
+wallet.withdraw(500);
+
+console.log(wallet.balance);
+```
+
+The caller knows what it can do without knowing how the wallet performs those operations.
+
+That's the important distinction.
+
+Bundling gives us a place to own behavior. Information hiding protects that ownership.
+
+### 2.3 Encapsulation vs Data Hiding
+
+These concepts are related, but they aren't interchangeable.
+
+For example, making `balance` private is data hiding.
+
+Making the `Wallet` responsible for validating deposits, withdrawals, and balance changes is encapsulation in action.
+
+**The definition to remember:**
+
+> An object should own the rules that keep its internal state valid.
+
+This is the idea we'll keep coming back to throughout the article.
+
+## 3. Four Mental Models for Understanding Encapsulation
+
+Before implementing it properly, let's build a few mental models.
+
+### Model 1: The ATM
+
+Imagine withdrawing money from an ATM.
+
+You interact with a small interface:
+
+- Insert your card.
+- Enter your PIN.
+- Select withdrawal.
+- Enter an amount.
+
+You don't directly access the bank's database, modify its ledger, or take money from its vault.
+
+The ATM controls how you interact with the underlying system.
+
+Think of it this way:
+
+You can request a withdrawal, but the ATM decides whether the operation is valid.
+
+Similarly, you can call:
+
+```ts
+wallet.withdraw(500);
+```
+
+But the wallet should decide whether the withdrawal is allowed.
+
+### Model 2: The Capsule
+
+Think about a medicine capsule.
+
+It contains its ingredients inside a protective covering.
+
+You don't need to know how those ingredients were manufactured or arranged internally.
+
+You only need to know how to use the capsule.
+
+The manufacturer could change the internal formulation without necessarily changing how you consume it.
+
+This is another important aspect of encapsulation:
+
+**The outside world should depend on what an object promises to do, not how it internally accomplishes it.**
+
+### Model 3: Tell, Don't Ask
+
+This is one of the most practical design habits related to encapsulation.
+
+Consider this:
+
+```ts
+// Ask
+if (wallet.balance >= 500) {
+  wallet.balance -= 500;
+}
+```
+
+The calling code:
+
+- Reads the wallet's balance.
+- Makes a decision.
+- Calculates the new balance.
+- Changes the wallet's state.
+
+The withdrawal decision now lives outside the wallet.
+
+Imagine five different modules need to withdraw money. They might all implement slightly different checks.
+
+Now consider:
+
+```ts
+// Tell
+wallet.withdraw(500);
+```
+
+You're telling the wallet what you want to happen.
+
+The wallet decides:
+
+- Is the amount valid?
+- Is there sufficient balance?
+- Should the withdrawal be rejected?
+- How should the balance change?
+- Should a transaction be recorded?
+
+The caller doesn't need to coordinate those internal steps.
+
+**Tell, Don't Ask** means giving an object a command and letting the object that owns the relevant state make the decision.
+
+One clarification: reading data isn't automatically bad. Sometimes callers genuinely need information. The problem occurs when callers repeatedly extract internal state, make domain decisions, and manipulate that state themselves.
+
+### Model 4: The Bouncer
+
+Imagine a club with a bouncer at its entrance.
+
+People cannot enter through the walls. They must go through the entrance.
+
+The bouncer checks whether someone is allowed inside.
+
+In an object, public methods act as controlled entry points for operations.
+
+```ts
+class Wallet {
+  #balance = 5000;
+
+  withdraw(amount: number) {
+    if (amount <= 0) {
+      throw new Error("Amount must be positive");
+    }
+
+    if (amount > this.#balance) {
+      throw new Error("Insufficient balance");
+    }
+
+    this.#balance -= amount;
+  }
+}
+```
+
+The method is the entry point.
+
+The validation is the admission check.
+
+The private balance is protected state.
+
+## 4. Let's Implement Encapsulation: From Bad Design to Good Design
+
+Now let's return to our original wallet.
+
+We'll improve the implementation step by step.
+
+### Step 1: Create a Class
+
+First, let's bundle the data and behavior.
+
+```ts
+class Wallet {
+  owner: string;
+  balance: number;
+  transactions: string[];
+
+  constructor(owner: string, balance: number) {
+    this.owner = owner;
+    this.balance = balance;
+    this.transactions = [];
+  }
+
+  deposit(amount: number): void {
+    this.balance += amount;
+    this.transactions.push(`Deposited ${amount}`);
+  }
+
+  withdraw(amount: number): void {
+    this.balance -= amount;
+    this.transactions.push(`Withdrawn ${amount}`);
+  }
+}
+```
+
+Usage:
+
+```ts
+const wallet = new Wallet("Keshav", 5000);
+
+wallet.deposit(1000);
+wallet.withdraw(500);
+```
+
+This looks better.
+
+But try this:
+
+```ts
+wallet.balance = -99999;
+wallet.transactions = [];
+```
+
+Both operations are still allowed.
+
+Why?
+
+Because TypeScript properties are public by default.
+
+The class has no control over direct modifications.
+
+**Having a class doesn't automatically mean you have encapsulation.**
+
+### Step 2: Introduce Private State
+
+TypeScript provides access modifiers that help us control access to class members.
+
+The three traditional access modifiers are:
+
+- `public`: accessible from anywhere.
+- `private`: accessible only within the declaring class (TypeScript access checking).
+- `protected`: accessible within the declaring class and its subclasses.
+
+Let's make the wallet's internal state private.
+
+```ts
+class Wallet {
+  private balance: number;
+  private transactions: string[];
+
+  constructor(
+    public readonly owner: string,
+    initialBalance: number
+  ) {
+    this.balance = initialBalance;
+    this.transactions = [];
+  }
+
+  deposit(amount: number): void {
+    this.balance += amount;
+    this.transactions.push(`Deposited ${amount}`);
+  }
+
+  withdraw(amount: number): void {
+    this.balance -= amount;
+    this.transactions.push(`Withdrawn ${amount}`);
+  }
+
+  getBalance(): number {
+    return this.balance;
+  }
+}
+```
+
+Now:
+
+```ts
+const wallet = new Wallet("Keshav", 5000);
+
+wallet.deposit(1000);
+
+console.log(wallet.getBalance()); // 6000
+
+wallet.balance = -99999; // TypeScript error
+wallet.transactions = []; // TypeScript error
+```
+
+We have restricted direct access to the internal properties.
+
+But have we completely solved the problem?
+
+Not yet.
+
+Consider:
+
+```ts
+wallet.withdraw(999999);
+```
+
+Our withdrawal method still allows the wallet to go into a negative balance.
+
+The properties are private, but the public method doesn't protect the wallet's rules.
+
+This brings us to a very important distinction:
+
+**Access control protects the entry points. Business rules determine what those entry points are allowed to do.**
+
+Both are necessary.
+
+### Step 3: Protect the Business Rules
+
+Let's introduce validation.
+
+```ts
+class Wallet {
+  private balance: number;
+
+  constructor(initialBalance: number) {
+    this.balance = initialBalance;
+  }
+
+  deposit(amount: number): void {
+    if (amount <= 0) {
+      throw new Error("Deposit amount must be positive");
+    }
+
+    this.balance += amount;
+  }
+
+  withdraw(amount: number): void {
+    if (amount <= 0) {
+      throw new Error("Withdrawal amount must be positive");
+    }
+
+    if (amount > this.balance) {
+      throw new Error("Insufficient balance");
+    }
+
+    this.balance -= amount;
+  }
+
+  getBalance(): number {
+    return this.balance;
+  }
+}
+```
+
+Now the wallet has control over its balance.
+
+Let's test it:
+
+```ts
+const wallet = new Wallet(5000);
+
+wallet.deposit(1000);
+wallet.withdraw(2000);
+
+console.log(wallet.getBalance()); // 4000
+
+wallet.withdraw(10000);
+// Error: Insufficient balance
+
+wallet.deposit(-500);
+// Error: Deposit amount must be positive
+```
+
+Notice what changed.
+
+Previously, the calling code was responsible for knowing the rules.
+
+Now, the wallet owns the rules.
+
+Any part of the application that calls `withdraw()` receives the same protection.
+
+We have one place responsible for enforcing the withdrawal rules.
+
+### Step 4: Protect the Constructor Too
+
+There's another problem we haven't solved.
+
+Look at this:
+
+```ts
+const wallet = new Wallet(-5000);
+```
+
+Our wallet starts with a negative balance.
+
+We protected deposits and withdrawals, but we forgot about object creation.
+
+This is important because an object should be valid from the moment it is created.
+
+Let's fix the constructor:
+
+```ts
+constructor(initialBalance: number) {
+  if (
+    !Number.isSafeInteger(initialBalance) ||
+    initialBalance < 0
+  ) {
+    throw new Error("Invalid initial balance");
+  }
+
+  this.balance = initialBalance;
+}
+```
+
+Now invalid initial balances are rejected.
+
+Why use `Number.isSafeInteger()`?
+
+Because money should not silently lose precision through floating-point arithmetic or unsafe integer values.
+
+For this example, we'll represent money in integer paise rather than rupees with decimal fractions.
+
+For example:
+
+- ₹100 = 10,000 paise.
+- ₹50.50 = 5,050 paise.
+
+This is a simplified monetary representation. A production payment system would also need to consider currency, rounding rules, limits, and persistence.
+
+## 5. Understanding Invariants: The Rules That Must Never Break
+
+This is arguably the most important section of the article.
+
+We've been adding validations, but what exactly are we protecting?
+
+We're protecting something called **invariants**.
+
+An invariant is a condition that must always be true for an object to be considered valid.
+
+Let's take our wallet.
+
+What makes a wallet valid?
+
+- Its balance must never be negative.
+- Deposits must be positive.
+- Withdrawals must be positive.
+- Every successful balance change must have a corresponding transaction record.
+- Its identity must not change after creation.
+
+These are the wallet's invariants.
+
+### 5.1 Validation vs Invariants
+
+These two concepts are related, but they mean different things.
+
+Validation is the process of checking whether an operation is allowed.
+
+An invariant is the condition that must remain true.
+
+For example:
+
+```ts
+if (amount <= 0) {
+  throw new Error("Invalid amount");
+}
+```
+
+This is validation.
+
+It helps protect the invariant that every deposit and withdrawal must have a positive amount.
+
+Think of it this way:
+
+- Invariant: the rule that must always remain true.
+- Validation: a check that helps enforce that rule.
+
+### 5.2 Every State-Changing Method Must Preserve Invariants
+
+Suppose we add another method:
+
+```ts
+withdraw(amount: number): void {
+  this.balance -= amount;
+}
+```
+
+This method changes the balance.
+
+But it doesn't check whether the amount is positive or whether sufficient funds exist.
+
+It can violate our invariant.
+
+Therefore, every operation that changes the object's state must preserve its invariants.
+
+This applies to:
+
+- Constructors.
+- Public methods.
+- Setters, if they exist.
+- State transitions.
+- Operations involving multiple objects.
+
+### 5.3 What Happens When We Add Money Transfers?
+
+Let's introduce a new requirement.
+
+A wallet should be able to transfer money to another wallet.
+
+```ts
+transferTo(target: Wallet, amount: number): void {
+  // Transfer money to another wallet
+}
+```
+
+Now think about the following sequence:
+
+1. Wallet A withdraws ₹500.
+2. Wallet B receives ₹500.
+
+What happens if the withdrawal succeeds but the deposit fails?
+
+Wallet A has lost money, but Wallet B hasn't received it.
+
+This is no longer just a simple validation problem.
+
+We need to think about **atomicity**: either both sides of the transfer succeed or neither does.
+
+This introduces another important backend concept: database transactions.
+
+Encapsulation helps each wallet protect its own rules, but encapsulation alone cannot guarantee atomicity across multiple objects or database records.
+
+That's where we need to combine good object design with transaction management.
+
+## 6. Encapsulation Is About Ownership, Not Just Access Modifiers
+
+Let's look at a common mistake.
+
+```ts
+class Wallet {
+  private balance = 5000;
+
+  getBalance(): number {
+    return this.balance;
+  }
+
+  setBalance(amount: number): void {
+    this.balance = amount;
+  }
+}
+```
+
+We made the property private.
+
+But we also introduced a public method that allows anyone to overwrite it.
+
+```ts
+wallet.setBalance(-99999);
+```
+
+The private modifier didn't help us here.
+
+Why?
+
+Because we protected the property but exposed an unrestricted operation that modifies it.
+
+This is why blindly adding getters and setters to every property is not good encapsulation.
+
+Consider the difference:
+
+```ts
+wallet.setBalance(1000);
+```
+
+Versus:
+
+```ts
+wallet.deposit(1000);
+```
+
+The first says:
+
+"Replace the balance with this value."
+
+The second says:
+
+"Perform a deposit operation."
+
+A deposit has meaning in the wallet's domain. It can validate the amount, update the balance, and record the transaction.
+
+The caller doesn't need to know how those internal steps work.
+
+A good public method represents an operation the object is allowed to perform, not merely a way to manipulate one of its fields.
+
+### 6.1 Encapsulation Doesn't Mean Hiding Everything
+
+Here's another misconception.
+
+Some may make every property private and expose nothing.
+
+That's not the goal.
+
+Consider:
+
+```ts
+class Wallet {
+  #balance = 5000;
+
+  get balance(): number {
+    return this.#balance;
+  }
+
+  withdraw(amount: number): void {
+    // Validate and withdraw
+  }
+}
+```
+
+Why can the outside world read the balance but not modify it?
+
+Because reading the balance doesn't violate the wallet's invariants.
+
+The wallet is allowed to expose information without exposing unrestricted control over its internal state.
+
+The goal is not to hide all information.
+
+**The goal is to control which operations can modify internal state and under what conditions.**
+
+## 7. Understanding TypeScript Access Modifiers
+
+Now let's understand something important about TypeScript.
+
+TypeScript provides `private` and `protected`, but there's an important difference between TypeScript's `private` keyword and JavaScript's native private fields.
+
+### 7.1 TypeScript Private
+
+```ts
+class Wallet {
+  private balance = 5000;
+}
+```
+
+TypeScript prevents outside code from accessing `balance` during type checking.
+
+However, TypeScript's `private` modifier is not runtime privacy.
+
+The restriction is erased when TypeScript compiles to JavaScript.
+
+For example:
+
+```ts
+const wallet = new Wallet();
+
+console.log((wallet as any).balance);
+```
+
+This can access the property at runtime.
+
+`as any` tells TypeScript to stop checking the access. It doesn't magically create runtime protection.
+
+### 7.2 JavaScript Private Fields
+
+JavaScript provides native private fields using `#`.
+
+```ts
+class Wallet {
+  #balance = 5000;
+
+  get balance(): number {
+    return this.#balance;
+  }
+}
+```
+
+Now:
+
+```ts
+const wallet = new Wallet();
+
+console.log(wallet.balance); // 5000
+console.log((wallet as any).balance); // undefined
+```
+
+Trying to access the actual private field using bracket notation also fails:
+
+```ts
+(wallet as any)["#balance"]; // undefined
+```
+
+The `#balance` field is protected by JavaScript's runtime private-field mechanism.
+
+### 7.3 When Should You Use Which?
+
+**TypeScript `private`:**
+
+- Provides compile-time access checking.
+- Is useful for ordinary TypeScript encapsulation.
+- Does not provide native runtime privacy.
+
+**JavaScript `#private`:**
+
+- Provides runtime private-field enforcement.
+- Cannot be accessed through ordinary property access.
+- Is useful when actual runtime privacy is important.
+
+For our examples, we'll use `#private` because it demonstrates actual runtime encapsulation.
+
+Remember: neither modifier automatically protects your business rules. Your public methods still need to enforce them.
+
+## 8. Getters, Setters, and the Trap
+
+Getters and setters are another area where beginners get confused.
+
+A getter allows controlled reading of a property.
+
+A setter allows controlled modification of a property.
+
+For example:
+
+```ts
+class User {
+  #name: string;
+
+  constructor(name: string) {
+    this.#name = name;
+  }
+
+  get name(): string {
+    return this.#name;
+  }
+
+  set name(value: string) {
+    if (!value.trim()) {
+      throw new Error("Name cannot be empty");
+    }
+
+    this.#name = value;
+  }
+}
+```
+
+Usage:
+
+```ts
+const user = new User("Keshav");
+
+console.log(user.name);
+
+user.name = "Rahul";
+```
+
+This is perfectly valid.
+
+The setter enforces a rule.
+
+But setters aren't always the best design choice.
+
+Consider a wallet:
+
+```ts
+wallet.balance = 5000;
+```
+
+What does this operation actually mean?
+
+Are we depositing money? Withdrawing money? Correcting an accounting entry? Receiving a refund?
+
+The operation is ambiguous.
+
+Compare:
+
+```ts
+wallet.deposit(5000);
+wallet.withdraw(500);
+wallet.refund(500);
+```
+
+These methods communicate intent.
+
+A useful rule:
+
+- Use getters when exposing information is appropriate.
+- Use setters when a property genuinely represents a freely changeable value and the setter can enforce its rules.
+- Prefer domain-specific methods when a change represents a meaningful business operation.
+
+**Expose behavior, not unrestricted state manipulation.**
+
+## 9. Defensive Copying: The Hidden Way Encapsulation Gets Broken
+
+We've made our transaction array private.
+
+Great.
+
+But what happens if we return that actual array?
+
+```ts
+class Wallet {
+  #transactions: string[] = [];
+
+  get history(): string[] {
+    return this.#transactions;
+  }
+}
+```
+
+Now:
+
+```ts
+const wallet = new Wallet();
+
+const history = wallet.history;
+
+history.push("Fake transaction");
+history.length = 0;
+```
+
+What happened?
+
+The outside code modified the wallet's internal array without accessing the private field directly.
+
+Why?
+
+Because arrays and objects are reference types.
+
+When we return the array, we're returning a reference to the same underlying object.
+
+Both the wallet and the caller now have access to that object.
+
+This is called **leaking internal mutable state**.
+
+### 9.1 Fix It With Defensive Copying
+
+Return a copy instead.
+
+```ts
+class Wallet {
+  #transactions: string[] = [];
+
+  get history(): readonly string[] {
+    return [...this.#transactions];
+  }
+}
+```
+
+Now the caller receives a different array.
+
+```ts
+const history = wallet.history;
+
+history.push("Fake transaction");
+```
+
+The wallet's original transaction array remains unchanged.
+
+Why does this work?
+
+Because the spread operator creates a new array containing the existing elements.
+
+For arrays containing objects, remember that this is only a shallow copy.
+
+If the objects themselves are mutable, the caller might still modify those objects.
+
+For that reason, immutable transaction records are useful.
+
+### 9.2 Make Transaction Records Immutable
+
+```ts
+type Transaction = Readonly<{
+  type: "DEPOSIT" | "WITHDRAW";
+  amount: number;
+  balanceAfter: number;
+  createdAt: number;
+}>;
+```
+
+Here, `Readonly` prevents TypeScript callers from modifying the properties.
+
+We can also freeze individual records at runtime:
+
+```ts
+const transaction = Object.freeze({
+  type: "DEPOSIT" as const,
+  amount: 1000,
+  balanceAfter: 6000,
+  createdAt: Date.now(),
+});
+```
+
+For this example, all the fields are primitive values, so shallow freezing is sufficient.
+
+For nested objects, additional protection may be needed.
+
+The important lesson:
+
+**Making a property private is not enough if you allow references to its mutable internal objects to escape.**
+
+## 10. Constructor Validation: An Object Should Never Start Invalid
+
+Let's revisit object creation.
+
+Imagine this:
+
+```ts
+const wallet = new Wallet();
+
+wallet.initialize(5000);
+```
+
+Between construction and initialization, the wallet exists without a valid balance.
+
+What happens if someone forgets to call `initialize()`?
+
+Or if another method gets called before initialization?
+
+We now have an object whose validity depends on remembering to perform an additional operation.
+
+That's fragile design.
+
+Prefer:
+
+```ts
+const wallet = new Wallet("wallet-123", "Keshav", 5000);
+```
+
+The constructor should establish the conditions required for the object to be valid.
+
+In other words:
+
+**An object should be valid from the moment it comes into existence.**
+
+If valid construction requires asynchronous work, don't try to make a constructor asynchronous. Use a factory or application-level creation workflow instead.
+
+For ordinary domain objects, synchronous constructor validation is often sufficient.
+
+## 11. Anemic Domain Model vs Rich Domain Model
+
+Now let's connect encapsulation with a common backend design problem.
+
+Imagine we're building an e-commerce application.
+
+An order has:
+
+- An ID.
+- A collection of items.
+- A total amount.
+- A status.
+
+We could write:
+
+```ts
+class Order {
+  status = "PENDING";
+  totalAmount = 1000;
+}
+```
+
+And put all the business logic in a separate service:
+
+```ts
+class OrderService {
+  cancel(order: Order) {
+    if (order.status === "SHIPPED") {
+      throw new Error("Cannot cancel shipped order");
+    }
+
+    order.status = "CANCELLED";
+  }
+}
+```
+
+Notice what happened.
+
+The `Order` class only stores data.
+
+The `OrderService` owns the business rules and modifies the order's state.
+
+This is an example of an **anemic domain model**: domain objects mostly hold data, while domain behavior lives elsewhere.
+
+Now compare it with:
+
+```ts
+class Order {
+  #status: "PENDING" | "PAID" | "SHIPPED" | "CANCELLED" =
+    "PENDING";
+
+  cancel(): void {
+    if (this.#status === "SHIPPED") {
+      throw new Error("Cannot cancel a shipped order");
+    }
+
+    if (this.#status === "CANCELLED") {
+      throw new Error("Order is already cancelled");
+    }
+
+    this.#status = "CANCELLED";
+  }
+
+  get status() {
+    return this.#status;
+  }
+}
+```
+
+Now the order owns the rules that protect its status.
+
+The caller says:
+
+```ts
+order.cancel();
+```
+
+It doesn't decide how the order's internal state should change.
+
+This is an example of a richer domain model.
+
+### Does This Mean Every Service Is Bad?
+
+Absolutely not.
+
+This is an important distinction.
+
+A service is useful when coordinating multiple objects, repositories, external systems, or application workflows.
+
+For example:
+
+- `OrderService` can coordinate an order and payment provider.
+- `PaymentService` can communicate with a payment gateway.
+- `EnrollmentService` can coordinate enrollment and progress repositories.
+
+But the rules that define whether an individual order can transition from `PENDING` to `CANCELLED` are natural responsibilities of the order itself.
+
+A useful separation:
+
+**Domain object**
+
+- Owns its state.
+- Protects its invariants.
+- Exposes meaningful domain operations.
+
+**Application service**
+
+- Coordinates use cases.
+- Loads and saves domain objects.
+- Communicates with repositories and external systems.
+- Manages application-level workflows.
+
+This isn't a rule that every line of business logic must live in an entity. The correct boundary depends on which object owns the rule and what information is required to enforce it.
+
+## 12. Encapsulation Doesn't Stop at Classes
+
+So far, we've discussed encapsulation at the object level.
+
+But the same design principle can be applied at larger levels of an application.
+
+Let's understand this through three levels.
+
+### 12.1 Object-Level Encapsulation
+
+```ts
+class Wallet {
+  #balance = 5000;
+
+  deposit(amount: number) {
+    // Validate and update balance
+  }
+}
+```
+
+The wallet controls its internal state.
+
+Outside code interacts through its public methods.
+
+### 12.2 Module-Level Encapsulation
+
+Imagine an authentication module.
+
+Internally, it contains:
+
+- Password hashing.
+- Token generation.
+- Authentication repository.
+- Session management.
+- Authentication business rules.
+
+Should every other module directly access these internal implementations?
+
+No.
+
+We can expose a smaller public interface:
+
+```ts
+// auth/index.ts
+
+export { AuthService } from "./auth.service";
+
+export type {
+  RegisterInput,
+  LoginInput,
+} from "./auth.types";
+```
+
+Other modules import the supported public API:
+
+```ts
+import { AuthService } from "@/modules/auth";
+```
+
+They don't need to know how password hashing or token generation is implemented.
+
+The internal files remain implementation details.
+
+This is module-level encapsulation.
+
+### 12.3 Service-Level Encapsulation
+
+Consider a payment service.
+
+Other parts of the application shouldn't need to understand every internal payment-processing step.
+
+They should interact through a well-defined contract.
+
+For example:
+
+```ts
+interface IPaymentService {
+  processPayment(
+    input: PaymentInput
+  ): Promise<PaymentResult>;
+}
+```
+
+The calling module depends on what the payment service promises to do.
+
+It doesn't need to know which payment provider is used, how the provider's API is called, or how internal retries are implemented.
+
+This creates a boundary between the caller and the implementation.
+
+One important distinction: interfaces and dependency inversion are not themselves the definition of encapsulation. They are design tools that can help establish controlled boundaries.
+
+The same principle scales:
+
+**Expose what callers need, keep internal decisions inside the boundary that owns them.**
+
+## 13. Common Encapsulation Mistakes
+
+Let's collect the mistakes we've discussed and a few more.
+
+### Mistake 1: Adding Getters and Setters to Every Property
+
+```ts
+getBalance() {}
+
+setBalance(amount: number) {}
+```
+
+A getter and unrestricted setter can simply recreate public property access.
+
+Ask yourself whether the caller genuinely needs to perform that operation.
+
+### Mistake 2: Returning Mutable Internal References
+
+```ts
+get history() {
+  return this.#transactions;
+}
+```
+
+This leaks internal state.
+
+Return a copy or an appropriate immutable representation.
+
+### Mistake 3: Making Properties Private but Keeping All Logic in Services
+
+```ts
+class Wallet {
+  #balance = 5000;
+}
+```
+
+If every business operation is performed by an external service, the wallet might still be an anemic domain model.
+
+Private properties alone don't establish meaningful behavioral ownership.
+
+### Mistake 4: Making Everything Public for Testing
+
+Don't expose internal methods simply because you want to test them.
+
+Test observable behavior through the public interface.
+
+If a private method contains sufficiently independent complexity, consider whether that responsibility belongs in a separate unit.
+
+### Mistake 5: Over-Encapsulation
+
+Not every object needs a class.
+
+A DTO, configuration object, or simple data-transfer structure can legitimately be a plain object.
+
+For example:
+
+```ts
+type CreateUserInput = {
+  name: string;
+  email: string;
+};
+```
+
+There is no reason to create a complicated class just to hold this input.
+
+Encapsulate where state has meaningful rules, ownership, or a reason to hide implementation details.
+
+### Mistake 6: Allowing Invalid Construction
+
+```ts
+const order = new Order();
+
+order.initialize();
+```
+
+If the object needs initialization before it can be used, consider redesigning its construction.
+
+### Mistake 7: Confusing Private Fields With Business-Rule Protection
+
+```ts
+class Wallet {
+  #balance = 5000;
+
+  setBalance(amount: number) {
+    this.#balance = amount;
+  }
+}
+```
+
+The field is private, but the public API still allows arbitrary changes.
+
+Access control and business-rule enforcement are separate responsibilities.
+
+## 14. A Practical Checklist: How to Design an Encapsulated Class
+
+Whenever you design a class, ask yourself these questions.
+
+### First: Understand the Object
+
+- What responsibility does this object have?
+- What state does it own?
+- What makes this object valid?
+
+### Second: Identify the Invariants
+
+- Which conditions must always remain true?
+- Which operations can violate those conditions?
+- What happens when an operation fails?
+
+### Third: Design the Public Interface
+
+- What should outside code be allowed to do?
+- Which operations should be public?
+- Does a generic setter expose too much control?
+- Which information genuinely needs to be readable?
+
+### Fourth: Protect the Implementation
+
+- Are internal fields private?
+- Am I returning mutable references?
+- Can an invalid object be created?
+- Can a state-changing method bypass the rules?
+
+### Finally: Think About Change
+
+If I change the internal representation tomorrow, how many external modules should break?
+
+Ideally, callers should continue working as long as the public contract remains unchanged.
+
+That's one of the biggest benefits of encapsulation: it reduces the amount of code that depends on internal implementation details.
+
+## 15. Design Challenge: Encapsulate an Order
+
+Now let's see whether you can apply what we've learned.
+
+Imagine you're building an e-commerce backend.
+
+An order contains:
+
+```ts
+class Order {
+  public id: string;
+  public items: OrderItem[];
+  public totalAmount: number;
+
+  public status:
+    | "PENDING"
+    | "PAID"
+    | "SHIPPED"
+    | "CANCELLED";
+
+  public paymentStatus:
+    | "UNPAID"
+    | "PAID"
+    | "REFUNDED";
+}
+```
+
+Currently, any part of your application can modify these properties.
+
+That's dangerous.
+
+Here are the business requirements:
+
+- An order must contain at least one item.
+- The total amount must never be negative.
+- A shipped order cannot be cancelled.
+- A cancelled order cannot transition to paid.
+- Items cannot be modified after payment.
+- An order's ID must never change after creation.
+- Payment status and order status must not become inconsistent.
+
+### Your Task
+
+Redesign this class using encapsulation.
+
+Don't jump straight into writing code.
+
+First, answer these questions.
+
+### Part A: State Ownership
+
+- Which properties should be private?
+- Which properties should be immutable?
+- Should the caller receive the original items array?
+
+### Part B: Public Interface
+
+- Should we expose `setStatus()`?
+- Should we expose `setTotalAmount()`?
+- What methods should the order provide?
+- Should we have `addItem()` and `removeItem()`?
+
+### Part C: Invariants
+
+- Who validates the order's status transitions?
+- What should happen if someone tries to cancel a shipped order?
+- How do you prevent items from being modified after payment?
+- How do you ensure payment and order state remain consistent?
+
+### Part D: Architectural Thinking
+
+Suppose payment is processed by an external payment provider.
+
+Should the `Order` class directly communicate with that provider?
+
+Or should an application service coordinate payment processing and then tell the order that payment succeeded?
+
+Think carefully about the boundary.
+
+There isn't necessarily one perfect implementation. What matters is whether your design has clear ownership, protects its invariants, and communicates intent through its public interface.
+
+## 16. Final Takeaway
+
+Let's bring everything together.
+
+Encapsulation is not about adding `private` to every property.
+
+It is about designing objects that own their state and control how that state changes.
+
+A well-designed object:
+
+- Knows what makes it valid.
+- Protects its invariants.
+- Exposes meaningful operations.
+- Hides unnecessary implementation details.
+- Prevents outside code from arbitrarily modifying its internal state.
+- Remains usable even when its internal implementation changes.
+
+Remember these three questions whenever you design a class:
+
+1. What state does this object own?
+2. What rules must always remain true?
+3. Who should have the authority to change that state?
+
+If you can answer these questions, you're already thinking beyond syntax and moving towards actual object-oriented design.
+
+> Encapsulation is not about hiding data. It's about protecting responsibility.
+
+---
+
+**Next up: LLD from Scratch #05 — Understanding Abstraction**
+
+We've learned how encapsulation protects an object's internal state.
+
+But there's another problem.
+
+Imagine calling a payment service. You know you can process a payment, but do you need to understand every internal step involved in processing it?
+
+No.
+
+That's where abstraction comes in.
+
+In the next article, we'll explore:
+
+- What abstraction actually means.
+- Abstraction vs encapsulation.
+- Interfaces and abstract classes.
+- Programming against contracts.
+- How abstraction helps us change implementations without changing callers.
+- Real backend examples using payment providers.
+
+**We'll think, we'll read, we'll question.**
+
+---
+
+*Written by Keshavvv*
+
+*Learning backend by building it.*

@@ -1,0 +1,519 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@plugin "@tailwindcss/typography";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+
+:root {
+  --radius: 0.625rem;
+
+  /* Light — Rose × Arctic */
+  --background: #F0F1F4;
+  --foreground: #252630;
+
+  --card: #F8F7F8;
+  --card-foreground: #252630;
+
+  --popover: #F8F7F8;
+  --popover-foreground: #252630;
+
+  --primary: #628BA8;
+  --primary-foreground: #FFFFFF;
+
+  --secondary: #E3EAF0;
+  --secondary-foreground: #343B46;
+
+  --muted: #E8E7EC;
+  --muted-foreground: #777783;
+
+  --accent: #B77D91;
+  --accent-foreground: #FFFFFF;
+
+  --destructive: oklch(0.577 0.245 27.325);
+
+  --border: #DCDDE4;
+  --input: #DCDDE4;
+  --ring: #628BA8;
+
+  --chart-1: #628BA8;
+  --chart-2: #B77D91;
+  --chart-3: #829DAB;
+  --chart-4: #C5A6B2;
+  --chart-5: #8C91A8;
+
+  --sidebar: #F5F3F6;
+  --sidebar-foreground: #252630;
+  --sidebar-primary: #628BA8;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #EDE3E9;
+  --sidebar-accent-foreground: #343B46;
+  --sidebar-border: #DCDDE4;
+  --sidebar-ring: #628BA8;
+
+  /* Sparkle burst */
+  --sparkle-blue: #628BA8;
+  --sparkle-blue-soft: #8FAFC5;
+  --sparkle-mist: #A9C3D6;
+  --sparkle-chalk: #E8EFF4;
+  --sparkle-rose: #B77D91;
+  --sparkle-rose-soft: #CFA3B3;
+}
+
+
+.dark {
+  /* Obsidian — Arctic Lavender */
+
+  --background: #17161C;
+  --foreground: #ECEAF0;
+
+  --card: #201E27;
+  --card-foreground: #ECEAF0;
+
+  --popover: #24212C;
+  --popover-foreground: #ECEAF0;
+
+  --primary: #91B6CC;
+  --primary-foreground: #17161C;
+
+  --secondary: #2B2833;
+  --secondary-foreground: #E7E3EC;
+
+  --muted: #292630;
+  --muted-foreground: #A5A0AE;
+
+  --accent: #C49AAF;
+  --accent-foreground: #17161C;
+
+  --destructive: oklch(0.704 0.191 22.216);
+
+  --border: #35313E;
+  --input: #35313E;
+  --ring: #91B6CC;
+
+  --chart-1: #91B6CC;
+  --chart-2: #C49AAF;
+  --chart-3: #A69BC8;
+  --chart-4: #829DAB;
+  --chart-5: #D1B4C3;
+
+  --sidebar: #1C1A22;
+  --sidebar-foreground: #ECEAF0;
+  --sidebar-primary: #91B6CC;
+  --sidebar-primary-foreground: #17161C;
+  --sidebar-accent: #2B2833;
+  --sidebar-accent-foreground: #E7E3EC;
+  --sidebar-border: #35313E;
+  --sidebar-ring: #91B6CC;
+
+  /* Sparkle burst */
+  --sparkle-blue: #91B6CC;
+  --sparkle-blue-soft: #B4D0E0;
+  --sparkle-mist: #C6DCE8;
+  --sparkle-chalk: #F0F6FA;
+  --sparkle-rose: #C49AAF;
+  --sparkle-rose-soft: #DCC0CD;
+}
+
+
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+
+  /* Shiki dual theme support */
+  .shiki,
+  .shiki span {
+    color: var(--shiki-light);
+    background-color: transparent;
+  }
+
+  .dark .shiki,
+  .dark .shiki span {
+    color: var(--shiki-dark);
+    background-color: transparent;
+  }
+
+.prose pre {
+    @apply leading-relaxed bg-transparent! font-mono!;
+  }
+
+  .prose code {
+    @apply m-0! mx-1! border rounded-md! px-1.5 py-0.5 bg-muted/60 dark:bg-muted/40 text-[13px]! font-mono text-foreground/90!;
+  }
+
+  .prose code::before, .prose code::after {
+    @apply content-none!;
+  }
+
+  .prose h1 {
+    @apply text-2xl! font-semibold! tracking-tight! leading-tight!;
+  }
+
+  .prose h2 {
+    @apply text-xl! font-semibold! tracking-tight! leading-tight!;
+  }
+
+  .prose h3 {
+    @apply text-lg! font-semibold! tracking-tight! leading-tight!;
+  }
+
+  .prose h4 {
+    @apply text-base! font-medium! tracking-tight! leading-tight!;
+  }
+
+  .prose h5 {
+    @apply text-base! font-medium! tracking-tight! leading-tight!;
+  }
+
+  .prose h6 {
+    @apply text-base! font-medium! tracking-tight! leading-tight!;
+  }
+
+  .prose a {
+    @apply text-primary underline underline-offset-4;
+  }
+
+  .prose blockquote {
+    @apply border-l-4 border-amber-500! pl-4 italic bg-muted/50 p-4 rounded-md rounded-l-none;
+  }
+
+  .prose blockquote p {
+    @apply m-0!;
+  }
+
+  .prose blockquote p:first-child {
+    @apply mt-0!;
+  }
+
+  /* Task lists (remark-gfm): remove bullet marker so it renders like a pure checklist */
+  .prose :where(ul.contains-task-list):not(:where([class~="not-prose"] *)) {
+    @apply list-none! pl-0!;
+  }
+
+  .prose :where(li.task-list-item):not(:where([class~="not-prose"] *)) {
+    @apply pl-0!;
+  }
+
+  .prose
+    :where(li.task-list-item > input[type="checkbox"]):not(
+      :where([class~="not-prose"] *)
+    ) {
+    @apply mr-2 align-middle!;
+  }
+
+  .prose :where(table):not(:where([class~="not-prose"]) *) {
+    @apply w-full min-w-full;
+    border-collapse: separate;
+    border-spacing: 0;
+  }
+
+  .prose :where(th):not(:where([class~="not-prose"] *)),
+  .prose :where(td):not(:where([class~="not-prose"] *)) {
+    @apply px-6 py-4 align-middle m-0 whitespace-nowrap;
+  }
+
+  .prose tr{
+    @apply hover:bg-accent/50! transition-colors! cursor-pointer! h-10!;
+  }
+
+  .prose :where(th):not(:where([class~="not-prose"] *)) {
+    @apply text-left font-semibold text-foreground border-b border-border m-0! bg-muted/50 p-3! py-2!;
+  }
+
+  .prose :where(td):not(:where([class~="not-prose"] *)) {
+    @apply text-muted-foreground border-b border-border text-sm! p-2!;
+  }
+
+  .prose :where(th:not(:last-child)):not(:where([class~="not-prose"] *)),
+  .prose :where(td:not(:last-child)):not(:where([class~="not-prose"] *)) {
+    @apply border-r border-border;
+  }
+
+  .prose :where(tbody tr:last-child td):not(:where([class~="not-prose"] *)) {
+    @apply border-b-0;
+  }
+
+}
+  ::view-transition-old(root), ::view-transition-new(root) {
+    animation: none;
+    mix-blend-mode: normal;
+}
+
+/* ---------------------------------------------------------------------------
+   Reveal animations — CSS only.
+
+   These used to be driven by JS (motion / BlurFade), which meant the hero
+   text shipped with `opacity: 0` in the HTML and only became visible after
+   hydration. That gated the LCP element behind the JS bundle.
+
+   Now the animation is pure CSS: it starts on first paint, needs no
+   JavaScript, and degrades to "content already visible" when the user asks
+   for reduced motion.
+   --------------------------------------------------------------------------- */
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes hero-title-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+    filter: blur(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .fade-up {
+    opacity: 0;
+    animation: fade-up 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+    animation-delay: var(--fade-delay, 0s);
+  }
+
+  .hero-title {
+    opacity: 0;
+    animation: hero-title-in 0.55s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fade-up,
+  .hero-title {
+    opacity: 1;
+    animation: none;
+  }
+}
+
+.hero-underline-path {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+}
+
+/* The head of the snake: a short dash that slides along the curve. */
+.hero-underline-tip {
+  stroke-dasharray: 0.06 0.94;
+  stroke-dashoffset: 0;
+  opacity: 0;
+}
+
+.hero-underline--start .hero-underline-path {
+  animation: hero-underline-draw 700ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.hero-underline--start .hero-underline-path--left {
+  animation-delay: 90ms;
+}
+
+.hero-underline--start .hero-underline-tip {
+  animation: hero-underline-tip 700ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.hero-underline--start .hero-underline-tip--left {
+  animation-delay: 90ms;
+}
+
+@keyframes hero-underline-draw {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes hero-underline-tip {
+  0% {
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+  70% {
+    opacity: 1;
+  }
+  100% {
+    stroke-dashoffset: -1;
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-underline-path {
+    animation: none !important;
+    stroke-dashoffset: 0;
+  }
+
+  .hero-underline-tip {
+    display: none;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Sparkle burst — subtle click/tap micro-interaction
+   --------------------------------------------------------------------------- */
+
+.sparkle-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  overflow: hidden;
+  pointer-events: none;
+  contain: layout paint style;
+}
+
+.sparkle-particle {
+  position: absolute;
+  display: block;
+  box-sizing: border-box;
+  pointer-events: none;
+  background-color: var(--sparkle-color, var(--sparkle-blue));
+  transform-origin: 50% 50%;
+  will-change: transform, opacity;
+  animation: sparkle-pop var(--sparkle-duration, 300ms)
+      cubic-bezier(0.22, 1, 0.36, 1) var(--sparkle-delay, 0ms) forwards;
+}
+
+/* Four-point sparkle */
+.sparkle-particle[data-shape="star"] {
+  clip-path: polygon(
+    50% 0%,
+    61% 39%,
+    100% 50%,
+    61% 61%,
+    50% 100%,
+    39% 61%,
+    0% 50%,
+    39% 39%
+  );
+}
+
+/* Soft dot */
+.sparkle-particle[data-shape="dot"] {
+  border-radius: 50%;
+}
+
+/* Diamond */
+.sparkle-particle[data-shape="diamond"] {
+  clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
+}
+
+/* Balloon — rounded body with a small knot */
+.sparkle-particle[data-shape="balloon"] {
+  border-radius: 50% 50% 50% 50% / 62% 62% 38% 38%;
+}
+
+.sparkle-particle[data-shape="balloon"]::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -1px;
+  width: 2px;
+  height: 2px;
+  background-color: var(--sparkle-color, var(--sparkle-blue));
+  transform: translateX(-50%) rotate(45deg);
+}
+
+/* Hollow ring */
+.sparkle-particle[data-shape="ring"] {
+  background-color: transparent;
+  border: 1px solid var(--sparkle-color, var(--sparkle-blue));
+  border-radius: 50%;
+}
+
+/* Leaf */
+.sparkle-particle[data-shape="leaf"] {
+  border-radius: 0 50% 0 50%;
+}
+
+/* Cross */
+.sparkle-particle[data-shape="cross"] {
+  clip-path: polygon(
+    38% 0%,
+    62% 0%,
+    62% 38%,
+    100% 38%,
+    100% 62%,
+    62% 62%,
+    62% 100%,
+    38% 100%,
+    38% 62%,
+    0% 62%,
+    0% 38%,
+    38% 38%
+  );
+}
+
+@keyframes sparkle-pop {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 0, 0) scale(0.35) rotate(0deg);
+  }
+  30% {
+    opacity: var(--sparkle-opacity, 0.85);
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(var(--sparkle-tx, 0px), var(--sparkle-ty, 0px), 0)
+      scale(var(--sparkle-scale, 1)) rotate(var(--sparkle-rot, 0deg));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sparkle-layer {
+    display: none;
+  }
+}
