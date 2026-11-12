@@ -6,6 +6,8 @@ import { DATA } from "@/data/resume";
 import { cn } from "@/lib/utils";
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { Analytics } from "@vercel/analytics/next";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import "./globals.css";
 import { FlickeringGrid } from "@/components/magicui/flickering-grid";
 
@@ -127,6 +129,8 @@ export default function RootLayout({
             </div>
             <Navbar />
             <SparkleBurst />
+            <SpeedInsights />
+            <Analytics />
           </TooltipProvider>
         </ThemeProvider>
       </body>
