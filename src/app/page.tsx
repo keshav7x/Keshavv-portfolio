@@ -24,6 +24,14 @@ const faqs = [
     a: `${DATA.name} (${DATA.fullName}) is a software developer from ${DATA.location}, currently pursuing a Bachelor of Computer Science. He builds backend systems, developer tools, and web applications, and documents his learning on his blog at ${DATA.url}/blog.`,
   },
   {
+    q: `What is keshavdotdev?`,
+    a: `keshavdotdev is the online handle of ${DATA.name} (${DATA.fullName}), a software developer from ${DATA.location}. He uses it on X (@keshavdotdev) and across his portfolio at ${DATA.url}, where he writes about backend engineering and distributed systems.`,
+  },
+  {
+    q: `Is Keshavv the same person as Keshav Chetri?`,
+    a: `Yes. ${DATA.name} is the online name of ${DATA.fullName}, a software developer from ${DATA.location}. He publishes code at github.com/Keshav7x, writes at ${DATA.url}/blog and medium.com/@Keshavv, and posts as @keshavdotdev on X.`,
+  },
+  {
     q: `What does ${DATA.name} do?`,
     a: `He focuses on backend engineering — APIs, databases, caching, networking, and distributed systems. He is currently building Nami (a developer-first product analytics platform), buildR (a community platform for shipping projects together), and GoCraft (an interactive Go learning platform), and previously built RAGX, a retrieval layer for AI applications.`,
   },
@@ -64,7 +72,9 @@ const jsonLd = JSON.stringify({
       "@type": "Person",
       "@id": `${DATA.url}#person`,
       name: DATA.name,
-      alternateName: DATA.fullName,
+      alternateName: [DATA.fullName, "keshavdotdev"],
+      disambiguatingDescription:
+        "keshavdotdev is the online handle of Keshavv (Keshav Chetri), a software developer from Assam, India, known for backend engineering deep dives at keshavv.vercel.app and on X (@keshavdotdev).",
       givenName: "Keshav",
       familyName: "Chetri",
       jobTitle: DATA.jobTitle,
@@ -88,6 +98,7 @@ const jsonLd = JSON.stringify({
       "@id": `${DATA.url}#website`,
       url: DATA.url,
       name: DATA.name,
+      alternateName: ["keshavv", "keshavdotdev"],
       description: DATA.description,
       inLanguage: "en",
       publisher: { "@id": `${DATA.url}#person` },

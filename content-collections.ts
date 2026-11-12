@@ -38,6 +38,32 @@ const posts = defineCollection({
     },
 });
 
+// Lightweight, metadata-only view of the same posts. Used by routes that must
+// stay lean (e.g. Edge-runtime OG image generation) where embedding every
+// post's full compiled MDX would blow past bundle-size limits. Generated as
+// its own module (.content-collections/generated/allPostMetas.js).
+const postMeta = defineCollection({
+    name: "postMeta",
+    directory: "content",
+    include: "**/*.mdx",
+    schema: z.object({
+        title: z.string(),
+        publishedAt: z.string(),
+        summary: z.string().optional(),
+        description: z.string().optional(),
+        tags: z.array(z.string()).optional(),
+    }),
+    transform: async (document) => {
+        return {
+            title: document.title,
+            publishedAt: document.publishedAt,
+            summary: document.summary ?? document.description ?? "",
+            tags: document.tags ?? [],
+            path: document._meta.path.replace(/\.mdx$/, ""),
+        };
+    },
+});
+
 export default defineConfig({
-    collections: [posts],
+    collections: [posts, postMeta],
 });

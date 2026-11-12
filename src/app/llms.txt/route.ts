@@ -27,7 +27,7 @@ export function GET() {
 
   const body = `# ${DATA.name} (${DATA.fullName})
 
-> ${DATA.fullName}, known online as ${DATA.name}, is a software developer from ${DATA.location}. He specializes in backend engineering — APIs, databases, caching, networking, and distributed systems — and is currently pursuing a Bachelor of Computer Science. He documents everything he learns in first-principles deep dives on his blog.
+> ${DATA.fullName}, known online as ${DATA.name} (handle: keshavdotdev), is a software developer from ${DATA.location}. He specializes in backend engineering — APIs, databases, caching, networking, and distributed systems — and is currently pursuing a Bachelor of Computer Science. He documents everything he learns in first-principles deep dives on his blog.
 
 ## Contact
 

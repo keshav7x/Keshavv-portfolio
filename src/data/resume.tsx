@@ -1,4 +1,5 @@
 import { Icons } from "@/components/icons";
+import { SITE } from "@/lib/site-meta";
 import { HomeIcon, NotebookIcon } from "lucide-react";
 import { ReactLight } from "@/components/ui/svgs/reactLight";
 import { NextjsIconDark } from "@/components/ui/svgs/nextjsIconDark";
@@ -9,23 +10,23 @@ import { Postgresql } from "@/components/ui/svgs/postgresql";
 import { Docker } from "@/components/ui/svgs/docker";
 
 export const DATA = {
-  name: "Keshavv",
-  fullName: "Keshav Chetri",
+  ...SITE,
   initials: "K",
-  jobTitle: "Software Developer",
-  url: "https://keshavv.vercel.app",
-  location: "Assam, India",
-  locationLink: "https://www.google.com/maps/place/Assam",
-  xHandle: "keshavdotdev",
-
-  description:
-    "Keshavv (Keshav Chetri) is a software developer from Assam, India, exploring backend engineering, distributed systems, and how things work under the hood.",
 
   keywords: [
     "Keshavv",
     "Keshav Chetri",
+    "keshavdotdev",
+    "keshavdotdev developer",
+    "keshavdotdev portfolio",
     "Keshav Chetri developer",
     "Keshavv developer",
+    "Keshavv portfolio",
+    "Keshavv blog",
+    "who is keshavv",
+    "who is keshavdotdev",
+    "Keshav Chetri portfolio",
+    "Keshav Chetri backend engineer",
     "Keshavv portfolio",
     "Keshavv blog",
     "software developer India",
