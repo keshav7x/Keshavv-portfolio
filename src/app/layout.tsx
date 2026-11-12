@@ -53,6 +53,7 @@ export const metadata: Metadata = {
     siteName: `${DATA.name}`,
     locale: "en_US",
     type: "website",
+    images: ["/og.png"],
   },
   robots: {
     index: true,
@@ -71,6 +72,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     site: "@keshavdotdev",
     creator: "@keshavdotdev",
+    images: ["/og.png"],
   },
   appleWebApp: {
     capable: true,
