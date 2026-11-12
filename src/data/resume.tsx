@@ -36,7 +36,7 @@ export const DATA = {
     "TypeScript developer",
     "Go developer",
     "Next.js developer",
-    "keshavv.vercel.app",
+    "keshavdotdev.vercel.ap",
   ],
 
   knowsAbout: [

@@ -6,7 +6,7 @@ export const SITE = {
   name: "Keshavv",
   fullName: "Keshav Chetri",
   jobTitle: "Software Developer",
-  url: "https://keshavv.vercel.app",
+  url: "https://keshavdotdev.vercel.app",
   location: "Assam, India",
   locationLink: "https://www.google.com/maps/place/Assam",
   xHandle: "keshavdotdev",
