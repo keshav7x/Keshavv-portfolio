@@ -12,7 +12,7 @@ export const SITE = {
   xHandle: "keshavdotdev",
 
   description:
-    "Keshavv (Keshav Chetri) is a software developer from Assam, India, exploring backend engineering, distributed systems, and how things work under the hood.",
+    " a student developer who loves building clean, modern websites and applications where design, functionality, and the little details come together to create thoughtful experiences.",
 
   avatarUrl: "/projects/me.avif",
 
