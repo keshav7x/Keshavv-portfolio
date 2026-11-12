@@ -79,7 +79,8 @@ export const metadata: Metadata = {
     telephone: false,
   },
   verification: {
-    google: process.env.GOOGLE_SITE_VERIFICATION ,
+    google:
+      process.env.GOOGLE_SITE_VERIFICATION!,
     yandex: process.env.YANDEX_VERIFICATION,
     ...(process.env.BING_SITE_VERIFICATION
       ? { other: { "msvalidate.01": process.env.BING_SITE_VERIFICATION } }

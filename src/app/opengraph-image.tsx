@@ -88,7 +88,7 @@ const styles = {
 export default async function Image() {
   try {
     const fontData = await getOgFontData();
-    const imageUrl = getOgAvatar().src;
+    const imageUrl = (await getOgAvatar()).src;
 
     return new ImageResponse(
       (

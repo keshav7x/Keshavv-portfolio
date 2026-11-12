@@ -25,9 +25,19 @@ export async function getOgFontData(): Promise<OgFontData | null> {
 
 // resvg (used by ImageResponse) cannot decode AVIF, so OG images embed a PNG
 // twin of the avatar. Explicit width/height props on <img> are required.
-export function getOgAvatar(): { src?: string } {
+// The PNG is inlined from disk so OG rendering does not depend on the deployed
+// site already serving it.
+export async function getOgAvatar(): Promise<{ src?: string }> {
   const url = SITE.avatarOgUrl || SITE.avatarUrl;
-  return { src: url ? new URL(url, SITE.url).toString() : undefined };
+  if (!url) return {};
+
+  try {
+    const file = await readFile(path.join(process.cwd(), "public", url.replace(/^\//, "")));
+    return { src: `data:image/png;base64,${file.toString("base64")}` };
+  } catch (error) {
+    console.error("Failed to inline OG avatar:", error);
+    return { src: new URL(url, SITE.url).toString() };
+  }
 }
 
 export function fontOptions(fontData: OgFontData | null) {

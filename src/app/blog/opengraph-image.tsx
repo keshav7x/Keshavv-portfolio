@@ -92,7 +92,7 @@ export default async function Image() {
         const fontData = await getOgFontData();
         const title = "Blog";
         const description = "Thoughts on software development, life, and more.";
-        const imageUrl = getOgAvatar().src;
+        const imageUrl = (await getOgAvatar()).src;
 
         return new ImageResponse(
             (

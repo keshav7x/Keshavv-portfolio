@@ -106,7 +106,7 @@ export default async function Image({
     const post = allPosts.find(
       (p) => p._meta.path.replace(/\.mdx$/, "") === slug
     );
-    const imageUrl = getOgAvatar().src;
+    const imageUrl = (await getOgAvatar()).src;
 
     if (!post) {
       return new ImageResponse(
