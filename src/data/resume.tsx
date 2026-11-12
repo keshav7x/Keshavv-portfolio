@@ -27,8 +27,6 @@ export const DATA = {
     "who is keshavdotdev",
     "Keshav Chetri portfolio",
     "Keshav Chetri backend engineer",
-    "Keshavv portfolio",
-    "Keshavv blog",
     "software developer India",
     "backend developer Assam",
     "backend engineer",
@@ -62,8 +60,6 @@ export const DATA = {
 
   summary:
     "Namaste! I'm Keshavv, a developer who loves building things and figuring out what makes them tick.\n\nI'm deeply interested in **backend engineering, distributed systems, databases, and infrastructure**. I enjoy going beyond the abstractions, questioning how things work, and learning by building real-world systems.",
-
-  avatarUrl: "/projects/me.avif",
 
   skills: [
     { name: "React", icon: ReactLight },

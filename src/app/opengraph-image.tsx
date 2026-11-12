@@ -1,7 +1,7 @@
 import { ImageResponse } from "next/og";
-import { DATA } from "@/data/resume";
+import { SITE } from "@/lib/site-meta";
 
-export const alt = DATA.name;
+export const alt = SITE.name;
 export const size = {
     width: 1200,
     height: 630,
@@ -105,8 +105,8 @@ const styles = {
 export default async function Image() {
     try {
         const fontData = await getFontData();
-        const imageUrl = DATA.avatarUrl
-            ? new URL(DATA.avatarUrl, DATA.url).toString()
+        const imageUrl = SITE.avatarUrl
+            ? new URL(SITE.avatarUrl, SITE.url).toString()
             : undefined;
 
         return new ImageResponse(
@@ -116,13 +116,13 @@ export default async function Image() {
                         <div style={styles.wrapper}>
                             {imageUrl && (
                                 <div style={styles.imageSection}>
-                                    <img src={imageUrl} alt={DATA.name} style={styles.image} />
+                                    <img src={imageUrl} alt={SITE.name} style={styles.image} />
                                 </div>
                             )}
                             <div style={styles.mainContainer}>
-                                <div style={styles.title}>{DATA.name}</div>
-                                {DATA.description && (
-                                    <div style={styles.description}>{DATA.description}</div>
+                                <div style={styles.title}>{SITE.name}</div>
+                                {SITE.description && (
+                                    <div style={styles.description}>{SITE.description}</div>
                                 )}
                             </div>
                         </div>

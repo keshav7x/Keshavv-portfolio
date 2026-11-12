@@ -1,6 +1,6 @@
 import { ImageResponse } from "next/og";
-import { allPosts } from "content-collections";
-import { DATA } from "@/data/resume";
+import { allPostMetas } from "content-collections";
+import { SITE } from "@/lib/site-meta";
 
 export const alt = "Blog Post";
 export const size = {
@@ -125,9 +125,9 @@ export default async function Image({
     try {
         const fontData = await getFontData();
         const { slug } = await params;
-        const post = allPosts.find((p) => p._meta.path.replace(/\.mdx$/, "") === slug);
-        const imageUrl = DATA.avatarUrl
-            ? new URL(DATA.avatarUrl, DATA.url).toString()
+        const post = allPostMetas.find((p) => p.path === slug);
+        const imageUrl = SITE.avatarUrl
+            ? new URL(SITE.avatarUrl, SITE.url).toString()
             : undefined;
 
         if (!post) {
