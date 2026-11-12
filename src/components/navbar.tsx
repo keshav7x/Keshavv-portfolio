@@ -4,6 +4,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Dock, DockIcon } from "@/components/magicui/dock";
+import { AnimatedThemeToggler } from "@/components/ui/animated-theme-toggler"
 import {
   Tooltip,
   TooltipArrow,
@@ -129,7 +130,7 @@ export default function Navbar() {
         />
 
         {/* Theme Toggle */}
-        <Tooltip>
+        {/* <Tooltip>
           <TooltipTrigger asChild>
             <button
               type="button"
@@ -157,7 +158,10 @@ export default function Navbar() {
             {isDark ? "Light mode" : "Dark mode"}
             <TooltipArrow />
           </TooltipContent>
-        </Tooltip>
+        </Tooltip> */}
+        <div className="flex justify-center p-6">
+          <AnimatedThemeToggler variant="circle" duration={600} fromCenter={true} />
+        </div>
       </Dock>
     </nav>
   );

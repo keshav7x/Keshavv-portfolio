@@ -10,6 +10,7 @@ import StudentSection from "@/components/section/student-section";
 import SkillsSection from "@/components/section/skills-section";
 import SkillsContribution from "@/components/skills-contribution";
 import HeroUnderline from "@/components/hero-underline";
+import ViewCounter from "@/components/view-counter";
 import { getContributions } from "@/lib/contributions";
 
 const BLUR_FADE_DELAY = 0.04;
@@ -155,15 +156,18 @@ export default async function Page() {
               </p>
             </div>
             <FadeUp delay={BLUR_FADE_DELAY} className="order-1 md:order-2">
-              <Image
-                src={DATA.avatarUrl}
-                alt={DATA.name}
-                width={128}
-                height={128}
-                priority
-                sizes="(max-width: 768px) 200px, 128px"
-                className="size-24 md:size-32 rounded-full border object-cover shadow-lg ring-4 ring-muted"
-              />
+              <div className="flex flex-col items-center gap-3">
+                <Image
+                  src={DATA.avatarUrl}
+                  alt={DATA.name}
+                  width={128}
+                  height={128}
+                  priority
+                  sizes="(max-width: 768px) 200px, 128px"
+                  className="size-24 md:size-32 rounded-full border object-cover shadow-lg ring-4 ring-muted"
+                />
+                <ViewCounter />
+              </div>
             </FadeUp>
           </div>
         </div>

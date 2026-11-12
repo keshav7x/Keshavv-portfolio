@@ -42,7 +42,6 @@
   --color-sidebar-ring: var(--sidebar-ring);
 }
 
-
 :root {
   --radius: 0.625rem;
 
@@ -98,7 +97,6 @@
   --sparkle-rose-soft: #CFA3B3;
 }
 
-
 .dark {
   /* Obsidian — Arctic Lavender */
 
@@ -152,8 +150,6 @@
   --sparkle-rose: #C49AAF;
   --sparkle-rose-soft: #DCC0CD;
 }
-
-
 
 @layer base {
   * {
