@@ -5,7 +5,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { DATA } from "@/data/resume";
 import { cn } from "@/lib/utils";
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist, Geist_Mono, Noto_Serif_Devanagari } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import "./globals.css";
@@ -23,6 +23,15 @@ const geist = Geist({
 const geistMono = Geist_Mono({
   subsets: ["latin"],
   variable: "--font-mono",
+  weight: "variable",
+  display: "swap",
+});
+
+// Serif Devanagari face for the Gita quote section — Geist has no Devanagari
+// glyphs, so the verse would otherwise fall back to system fonts.
+const gitaSerif = Noto_Serif_Devanagari({
+  subsets: ["devanagari", "latin"],
+  variable: "--font-devanagari",
   weight: "variable",
   display: "swap",
 });
@@ -107,11 +116,12 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body
-        className={cn(
-          "min-h-screen bg-background font-sans antialiased relative",
-          geist.variable,
-          geistMono.variable
-        )}
+          className={cn(
+            "min-h-screen bg-background font-sans antialiased relative",
+            geist.variable,
+            geistMono.variable,
+            gitaSerif.variable
+          )}
       >
         <ThemeProvider attribute="class" defaultTheme="light">
           <TooltipProvider delayDuration={0}>

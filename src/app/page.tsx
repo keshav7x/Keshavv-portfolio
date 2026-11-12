@@ -4,6 +4,7 @@ import { DATA } from "@/data/resume";
 import Link from "next/link";
 import Markdown from "react-markdown";
 import ContactSection from "@/components/section/contact-section";
+import GitaQuote from "@/components/section/gita-quote";
 import FaqSection from "@/components/section/faq-section";
 import ProjectsSection from "@/components/section/projects-section";
 import StudentSection from "@/components/section/student-section";
@@ -217,6 +218,7 @@ export default async function Page() {
       <section id="faq">
 
       </section>
+      <GitaQuote />
       <section id="contact">
         <FadeUp delay={BLUR_FADE_DELAY * 16}>
           <ContactSection />

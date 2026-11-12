@@ -40,6 +40,7 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+  --font-gita: var(--font-devanagari), serif;
 }
 
 :root {
@@ -150,6 +151,17 @@
   --sparkle-chalk: #F5F5F5;
   --sparkle-rose: #B0A5A5;
   --sparkle-rose-soft: #D0C5C5;
+}
+
+/* Antique gold accent — Gita quote section (decorative details only).
+   Deepened bronze in light mode for contrast on the off-white background,
+   antique gold in dark mode against the obsidian background. */
+.gita-quote {
+  --gita-gold: #8a6a2e;
+}
+
+.dark .gita-quote {
+  --gita-gold: #c2a05c;
 }
 
 @layer base {

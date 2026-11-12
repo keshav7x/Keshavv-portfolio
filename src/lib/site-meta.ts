@@ -12,7 +12,7 @@ export const SITE = {
   xHandle: "keshavdotdev",
 
   description:
-    " a student developer who loves building clean, modern websites and applications where design, functionality, and the little details come together to create thoughtful experiences.",
+    "a full stack developer who loves building clean, modern websites and applications where design, functionality, and the little details come together to create thoughtful experiences.",
 
   avatarUrl: "/projects/me.avif",
 
